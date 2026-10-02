@@ -1,8 +1,14 @@
 /**
  * Python 后端进程管理（规划书 §34、§35）。
  *
- * Desktop **不假设** Python 一定存在：找不到后端时给出明确提示并降级为
- * 「只读模式」，而不是白屏。
+ * 两种运行形态：
+ *
+ * | 环境 | 后端来源 | 启动方式 |
+ * |---|---|---|
+ * | 开发 | 仓库源码 | `uv run inkflow-server` |
+ * | 打包 | 随安装包分发的单文件可执行程序 | 直接执行 |
+ *
+ * Desktop **不假设** Python 一定存在：找不到后端时给出明确提示，而不是白屏。
  *
  * 握手协议：后端就绪后在 stdout 打印一行
  *
@@ -13,7 +19,10 @@
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
+
+import { app } from 'electron'
 
 export interface BackendConnection {
   baseUrl: string
@@ -33,6 +42,12 @@ export interface BackendStartOptions {
   cwd?: string
 }
 
+interface LaunchSpec {
+  command: string
+  args: string[]
+  cwd: string
+}
+
 const READY_PREFIX = 'INKFLOW_READY'
 
 /** uv 可执行文件的候选位置。开发机上的安装位置优先于 PATH。 */
@@ -41,6 +56,40 @@ const UV_CANDIDATES = [
   process.platform === 'win32' ? 'D:\\DevEnv\\uv\\uv.exe' : undefined,
   'uv'
 ].filter((value): value is string => Boolean(value))
+
+function isExecutable(command: string): boolean {
+  // 含路径分隔符的必须真实存在；裸命令交给 PATH 解析
+  if (command.includes('/') || command.includes('\\')) return existsSync(command)
+  return true
+}
+
+/**
+ * 决定启动哪个后端。
+ *
+ * 打包后必须用随包分发的可执行文件 —— 用户机器上不一定有 Python，
+ * 更不一定有 uv。
+ */
+function resolveLaunch(options: BackendStartOptions): LaunchSpec {
+  if (app.isPackaged) {
+    const name = process.platform === 'win32' ? 'inkflow-server.exe' : 'inkflow-server'
+    const bundled = join(process.resourcesPath, 'backend', name)
+    if (!existsSync(bundled)) {
+      throw new Error(`安装包缺少后端程序（${bundled}）。这是打包问题，请重新安装或反馈。`)
+    }
+    // 安装目录通常只读，工作目录换成可写的用户数据目录
+    return { command: bundled, args: [], cwd: app.getPath('userData') }
+  }
+
+  const uv = UV_CANDIDATES.find(isExecutable)
+  if (!uv) {
+    throw new Error('找不到 uv 可执行文件。请安装 uv，或设置环境变量 INKFLOW_UV 指向它。')
+  }
+  return {
+    command: uv,
+    args: ['run', 'inkflow-server'],
+    cwd: options.cwd ?? process.cwd()
+  }
+}
 
 export class BackendProcess {
   private child: ChildProcessWithoutNullStreams | null = null
@@ -63,22 +112,31 @@ export class BackendProcess {
   async start(options: BackendStartOptions = {}): Promise<BackendConnection> {
     if (this.connection) return this.connection
 
-    const uv = UV_CANDIDATES.find((candidate) => this.canExecute(candidate))
-    if (!uv) {
-      throw new Error(
-        '找不到 uv 可执行文件。请安装 uv，或设置环境变量 INKFLOW_UV 指向它。'
-      )
-    }
-
-    const args = ['run', 'inkflow-server', '--quiet']
+    const launch = resolveLaunch(options)
+    const args = [...launch.args, '--quiet']
     if (options.port !== undefined) args.push('--port', String(options.port))
     if (options.noToken) args.push('--no-token')
 
-    this.child = spawn(uv, args, {
-      cwd: options.cwd ?? process.cwd(),
-      env: { ...process.env, PYTHONUNBUFFERED: '1' },
+    console.log(`[inkflow-backend] 启动：${launch.command} ${args.join(' ')}`)
+
+    this.child = spawn(launch.command, args, {
+      cwd: launch.cwd,
+      env: {
+        ...process.env,
+        // 不缓冲输出，否则握手行要等缓冲区满才吐出来
+        PYTHONUNBUFFERED: '1',
+        // 本机回环请求不该走系统代理
+        NO_PROXY: '127.0.0.1,localhost',
+        no_proxy: '127.0.0.1,localhost'
+      },
       stdio: ['ignore', 'pipe', 'pipe']
     }) as ChildProcessWithoutNullStreams
+
+    // spawn 失败（可执行文件不存在、无执行权限）会触发 'error'。
+    // 不监听的话 Node 会抛未捕获异常，直接带走整个主进程。
+    this.child.on('error', (error) => {
+      console.error('[inkflow-backend] 进程启动失败：', error)
+    })
 
     this.child.stderr.on('data', (chunk: Buffer) => {
       // 后端日志原样转发，方便在 DevTools 里排查
@@ -123,11 +181,6 @@ export class BackendProcess {
     this.child = null
     this.connection = null
     this.stopping = false
-  }
-
-  private canExecute(command: string): boolean {
-    if (command.includes('/') || command.includes('\\')) return existsSync(command)
-    return true // 交给 PATH 解析
   }
 
   /** 逐行读取 stdout，等待握手行。 */

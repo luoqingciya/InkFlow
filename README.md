@@ -1,5 +1,10 @@
 # InkFlow
 
+[![CI](https://github.com/luoqingciya/InkFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/luoqingciya/InkFlow/actions/workflows/ci.yml)
+[![Release](https://github.com/luoqingciya/InkFlow/actions/workflows/release.yml/badge.svg)](https://github.com/luoqingciya/InkFlow/actions/workflows/release.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+
 > **API-First 小说资源聚合与下载平台**
 > 内核兼容 · 外层隔离
 

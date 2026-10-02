@@ -7,7 +7,14 @@
     uv run pyinstaller packaging/inkflow-server.spec --noconfirm
 """
 
+import os
+
 from PyInstaller.utils.hooks import collect_all, collect_submodules
+
+# SPECPATH 由 PyInstaller 注入，指向本 spec 文件所在目录。
+# 不用相对路径：spec 里的相对路径是相对**运行时 cwd** 解析的，
+# 从仓库根跑就会找不到入口文件。
+ENTRY = os.path.join(SPECPATH, "entry.py")
 
 datas = []
 binaries = []
@@ -52,8 +59,8 @@ hiddenimports += collect_submodules("sqlalchemy.dialects.sqlite")
 hiddenimports += ["pydantic_core", "annotated_types"]
 
 a = Analysis(
-    ["entry.py"],
-    pathex=[],
+    [ENTRY],
+    pathex=[SPECPATH],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,

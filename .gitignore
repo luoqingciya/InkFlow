@@ -31,6 +31,13 @@ desktop/dist/
 desktop/release/
 .electron-vite/
 *.tsbuildinfo
+
+# 打包时临时放入的 Python 后端（由 CI 从 dist/ 拷入，不入库）
+desktop/resources/backend/
+!desktop/resources/backend/.gitkeep
+
+# PyInstaller 中间产物
+*.manifest
 npm-debug.log*
 yarn-error.log*
 pnpm-debug.log*
