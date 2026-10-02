@@ -121,7 +121,8 @@ def build_state(
     _register_source_types(resolved_registry, resolved_loader)
     # 让全局请求配置（超时、并发上限、内网访问开关）作用到每个书源
     cache = _build_cache(resolved_settings, db)
-    resolved_registry.set_http_factory(_make_http_factory(resolved_settings, cache))
+    http_factory = _make_http_factory(resolved_settings, cache)
+    resolved_registry.set_http_factory(http_factory)
 
     library = LibraryService(db)
     tasks = DownloadTaskManager(
@@ -129,6 +130,8 @@ def build_state(
         library=library,
         settings=resolved_settings,
         paths=resolved_paths,
+        # 封面与正文插图走同一套 HTTP 约束，不另起一套配置
+        http_factory=http_factory,
     )
 
     return AppState(

@@ -61,7 +61,7 @@ from inkflow_core.utils import (
 )
 
 #: 全项目唯一的版本号来源。其余包通过 [tool.hatch.version] 从这里读取。
-__version__ = "0.1.0.dev1"
+__version__ = "0.1.0.dev2"
 
 if TYPE_CHECKING:
     # 仅供类型检查器与 IDE 解析 ``__all__`` 里的 "Database"。

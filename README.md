@@ -169,6 +169,103 @@ npm run dev
 
 ---
 
+## 怎么用
+
+上面那节讲的是**怎么把它跑起来**。这节讲**跑起来之后怎么用**。
+
+### 先说一件最要紧的事：InkFlow 不带书源
+
+书源（抓哪个网站、用什么规则解析）**需要你自己导入**。项目不内置、
+不维护、不默认分发任何第三方书源合集 —— 这是刻意的：
+
+- 书源指向的站点会变，内置的书源很快就会失效，维护它没有意义
+- 更重要：**分发指向特定站点的书源，性质就变了**
+
+`sources/official/` 里只有**结构模板**，导入进去也不能用（地址是占位的）。
+`sources/test/mock-site.yaml` 是给测试用的本地站点，同理。
+
+书源从哪来？两条路：
+
+1. **自己写**。原生书源是声明式 YAML，照 `sources/official/example.yaml`
+   的注释改即可，不用写代码。
+2. **导入 Legado 书源**。InkFlow 兼容「开源阅读」的书源格式，
+   社区里能找到的书源可以直接导入（`inkflow sources import <文件>`）。
+
+使用本书源抓取内容时，你需要自行遵守来源网站的服务条款、版权规定
+与所在司法辖区的法律。详见 [许可证与合规](#许可证与合规)。
+
+### 完整流程
+
+```bash
+# 1. 起服务（桌面端会自动拉起，命令行用的话手动起）
+uv run inkflow-server --port 8765
+
+# 2. 导入一个书源
+uv run inkflow sources import ./my-source.yaml
+uv run inkflow sources list                 # 确认导入成功、是启用状态
+uv run inkflow sources test <id> search 三体 # 先试一下这个书源能不能用
+
+# 3. 搜索
+uv run inkflow search "三体"
+#    输出里会带上 book-id，下一步要用
+
+# 4. 看目录，确认要下哪些章
+uv run inkflow book chapters <book-id>
+
+# 5. 下载（不写区间就是全本）
+uv run inkflow download <book-id> --start 1 --end 50
+
+# 6. 导出成 EPUB
+uv run inkflow export <book-id> --format epub
+```
+
+下载是**异步任务**：`download` 命令提交后立刻返回任务 ID，可以用
+`inkflow task list` 看进度，或 `inkflow task pause/resume/cancel` 控制它。
+
+### 桌面端
+
+```bash
+cd desktop && npm install && npm run dev
+```
+
+界面里的顺序和上面一样：**书源 → 搜索 → 书库 → 下载 → 导出**。
+几个和命令行不同的地方：
+
+- 下载进度是**实时推送**的（WebSocket），不用手动刷新
+- 下载时可以随时暂停 / 恢复 / 取消
+- 已经下载过的章节会自动跳过，重跑不会重复抓
+
+### 文件都放在哪
+
+所有数据都在**一个目录**下，拷走即迁移（见 [ADR-015](docs/architecture/decisions.md)）：
+
+| 内容 | 位置 |
+|---|---|
+| 数据根目录 | 运行目录下的 `.inkflow/`（不可写时回退到 `~/.inkflow`） |
+| 数据库 | `.inkflow/database/inkflow.db` |
+| 导出的书 | `.inkflow/exports/` |
+| 正文插图 | `.inkflow/books/<书籍ID>/images/` |
+| 日志 | `.inkflow/logs/inkflow.log` |
+| 后端握手信息 | `.inkflow/server.json`（端口 + token，CLI 靠它找到服务） |
+
+想换位置就设环境变量 `INKFLOW_HOME=/path/to/data`。
+
+### 常见问题
+
+**搜索没结果？** 先 `inkflow sources test <id> search <关键词>` 确认书源本身
+能用 —— 站点改版会让书源失效，这与 InkFlow 无关。
+
+**下载很慢？** 默认每域名 2 请求/秒，是为了不对站点造成压力。可以在
+`config.toml` 的 `[source]` 段调整，但**不要调得太激进** —— 被限流反而更慢。
+
+**导出的 EPUB 没有封面？** 封面地址在**详情页**规则里，下载时若书库里
+还没有封面，InkFlow 会补抓一次详情页。若书源本身没写封面规则，就没有封面。
+
+**想看服务在干什么？** 日志在 `.inkflow/logs/inkflow.log`，
+配置里可开 JSON Lines 格式（见 `config.example.toml` 的 `[log]` 段）。
+
+---
+
 ## 开发
 
 ```bash

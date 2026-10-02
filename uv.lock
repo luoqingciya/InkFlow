@@ -375,7 +375,7 @@ requires-dist = [
 
 [[package]]
 name = "inkflow-workspace"
-version = "0.1.0.dev1"
+version = "0.1.0.dev2"
 source = { virtual = "." }
 
 [package.dev-dependencies]
