@@ -22,6 +22,7 @@ from inkflow_core.models import (
 __all__ = [
     "BookDetailResponse",
     "BookListResponse",
+    "CacheStatsResponse",
     "ChapterContentResponse",
     "ChapterListResponse",
     "ErrorDetail",
@@ -82,6 +83,19 @@ class HealthResponse(BaseModel):
     uptime_seconds: float = 0.0
 
 
+class CacheStatsResponse(BaseModel):
+    """HTTP 缓存概况。
+
+    未启用缓存时字段形状保持一致，只是取零值 —— 客户端不需要分支处理。
+    """
+
+    enabled: bool
+    entries: int
+    size_bytes: int
+    expired_entries: int
+    max_size_bytes: int | None = None
+
+
 class SystemInfoResponse(BaseModel):
     """``GET /api/v1/system/info`` —— 运行概况。"""
 
@@ -97,6 +111,7 @@ class SystemInfoResponse(BaseModel):
     source_formats: list[str]
     python_version: str
     platform: str
+    cache: CacheStatsResponse
 
 
 # ---------------------------------------------------------------- 搜索

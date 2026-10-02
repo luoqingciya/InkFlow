@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC, datetime
 
 __all__ = [
+    "ensure_utc",
     "new_book_id",
     "new_chapter_id",
     "new_id",
@@ -22,6 +23,15 @@ __all__ = [
 def utcnow() -> datetime:
     """返回带时区的当前 UTC 时间。"""
     return datetime.now(UTC)
+
+
+def ensure_utc(value: datetime | None) -> datetime | None:
+    """SQLite 不保存时区，读回来补上 UTC，避免 naive / aware 混用报错。"""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def new_id(prefix: str, length: int = 16) -> str:

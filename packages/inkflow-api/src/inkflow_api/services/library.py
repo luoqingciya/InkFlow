@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import delete, func, select
@@ -33,18 +32,9 @@ from inkflow_core.storage.tables import (
     DownloadTaskRow,
     SettingRow,
 )
-from inkflow_core.utils import utcnow
+from inkflow_core.utils import ensure_utc, utcnow
 
 __all__ = ["LibraryService"]
-
-
-def _ensure_utc(value: datetime | None) -> datetime | None:
-    """SQLite 不保存时区，读回来补上 UTC，避免 naive / aware 混用报错。"""
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
 
 
 class LibraryService:
@@ -303,7 +293,7 @@ class LibraryService:
                 raw_content=row.raw_content,
                 clean_content=row.clean_content,
                 content_hash=row.content_hash,
-                fetched_at=_ensure_utc(row.fetched_at) or utcnow(),
+                fetched_at=ensure_utc(row.fetched_at) or utcnow(),
             )
 
     def get_contents(self, chapter_ids: list[str]) -> dict[str, ChapterContent]:
@@ -320,7 +310,7 @@ class LibraryService:
                     raw_content=row.raw_content,
                     clean_content=row.clean_content,
                     content_hash=row.content_hash,
-                    fetched_at=_ensure_utc(row.fetched_at) or utcnow(),
+                    fetched_at=ensure_utc(row.fetched_at) or utcnow(),
                 )
                 for row in rows
             }
@@ -418,8 +408,8 @@ class LibraryService:
                     status=row.status,  # type: ignore[arg-type]
                     attempts=row.attempts,
                     error=row.error,
-                    started_at=_ensure_utc(row.started_at),
-                    finished_at=_ensure_utc(row.finished_at),
+                    started_at=ensure_utc(row.started_at),
+                    finished_at=ensure_utc(row.finished_at),
                 )
                 for row in rows
             ]
@@ -469,8 +459,8 @@ def _row_to_source(row: BookSourceRow) -> BookSource:
             "request": _loads(row.request_config, RequestConfig().model_dump()),
             "meta": _loads(row.meta, SourceMeta().model_dump()),
             "raw": _loads(row.raw, {}),
-            "created_at": _ensure_utc(row.created_at),
-            "updated_at": _ensure_utc(row.updated_at),
+            "created_at": ensure_utc(row.created_at),
+            "updated_at": ensure_utc(row.updated_at),
         }
     )
 
@@ -489,8 +479,8 @@ def _row_to_book(row: BookRow) -> Book:
         word_count=row.word_count,
         latest_chapter=row.latest_chapter,
         normalized_name=row.normalized_name,
-        created_at=_ensure_utc(row.created_at) or utcnow(),
-        updated_at=_ensure_utc(row.updated_at) or utcnow(),
+        created_at=ensure_utc(row.created_at) or utcnow(),
+        updated_at=ensure_utc(row.updated_at) or utcnow(),
     )
 
 
@@ -504,8 +494,8 @@ def _row_to_chapter(row: ChapterRow) -> Chapter:
         is_vip=row.is_vip,
         downloaded=row.downloaded,
         content_hash=row.content_hash,
-        created_at=_ensure_utc(row.created_at) or utcnow(),
-        updated_at=_ensure_utc(row.updated_at) or utcnow(),
+        created_at=ensure_utc(row.created_at) or utcnow(),
+        updated_at=ensure_utc(row.updated_at) or utcnow(),
     )
 
 
@@ -523,9 +513,9 @@ def _row_to_task(row: DownloadTaskRow) -> DownloadTask:
         output_format=row.output_format,
         output_path=row.output_path,
         error=row.error,
-        created_at=_ensure_utc(row.created_at) or utcnow(),
-        started_at=_ensure_utc(row.started_at),
-        finished_at=_ensure_utc(row.finished_at),
+        created_at=ensure_utc(row.created_at) or utcnow(),
+        started_at=ensure_utc(row.started_at),
+        finished_at=ensure_utc(row.finished_at),
     )
 
 
