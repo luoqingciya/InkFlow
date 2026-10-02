@@ -16,6 +16,28 @@
 
 完整文本见仓库根的 [`LICENSE`](../../LICENSE)，版权与第三方说明见 [`NOTICE`](../../NOTICE)。
 
+### 这两个文件怎么分发
+
+| 文件 | 作用 |
+|---|---|
+| `LICENSE` | Apache-2.0 全文 |
+| `NOTICE` | 版权归属、与 Legado 的关系说明、第三方依赖提示 |
+
+Apache-2.0 对分发有两条硬要求，它们是**绑定的**，不能只带一个：
+
+- **§4(a)**：必须向接收者提供许可证副本
+- **§4(d)**：作品含 `NOTICE` 时，分发必须携带其中的归属声明
+
+具体落到三处：
+
+1. **根 `pyproject.toml`** 的 `license-files` 写 `["LICENSE", "NOTICE"]`。
+   PEP 639 下**显式列出后只包含列出的文件**，只写 `LICENSE` 会漏掉 NOTICE。
+2. **发版流水线**把 `LICENSE` 与 `NOTICE` 一并拷进 Release 产物 ——
+   分发二进制（安装包、单文件可执行程序）同样受 §4 约束，
+   不能因为「仓库里有」就省略。
+3. **各成员包**各自声明 `license = "Apache-2.0"`。它们不单独发布到索引，
+   许可证文件由仓库根统一提供，因此不重复挂 `license-files`。
+
 ---
 
 ## 与 Legado 的关系
@@ -151,6 +173,8 @@ Python 侧依赖清单以 `uv.lock` 为准，前端以 `desktop/package-lock.jso
 - [ ] 确认兼容层中没有任何来自 Legado 仓库的代码片段
 - [ ] 确认 `sources/official/` 里没有指向真实盗版站点的书源
 - [ ] 确认 `NOTICE` 与实际依赖一致
+- [ ] 确认 **Release 产物里带上了 `LICENSE` 与 `NOTICE`**（§4(a) / §4(d)）
+- [ ] 确认各 `pyproject.toml` 的 `license` 与 `license-files` 与实际一致
 - [ ] 确认 README 中的合规声明与实际行为一致
 - [ ] 若计划上架应用商店，确认商店对"内容获取工具"的额外要求
 

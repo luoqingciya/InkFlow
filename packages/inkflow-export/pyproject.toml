@@ -4,6 +4,7 @@ name = "inkflow-export"
 dynamic = ["version"]
 description = "InkFlow 导出器：TXT / EPUB / Markdown / HTML"
 requires-python = ">=3.12"
+license = "Apache-2.0"
 dependencies = [
     "inkflow-core",
 ]

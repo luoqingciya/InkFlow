@@ -5,6 +5,7 @@ name = "inkflow-core"
 dynamic = ["version"]
 description = "InkFlow 核心领域模型、配置与存储抽象"
 requires-python = ">=3.12"
+license = "Apache-2.0"
 dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",

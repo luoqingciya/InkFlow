@@ -4,6 +4,7 @@ name = "inkflow-legado"
 dynamic = ["version"]
 description = "InkFlow 的 Legado 书源兼容层：独立实现的格式解析与规则运行时"
 requires-python = ">=3.12"
+license = "Apache-2.0"
 dependencies = [
     "inkflow-core",
     "inkflow-source",
