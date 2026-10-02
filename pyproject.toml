@@ -8,7 +8,9 @@ description = "InkFlow —— API-First 小说资源聚合与下载平台（uv w
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
-license-files = ["LICENSE"]
+# NOTICE 必须一起分发：Apache-2.0 §4(d) 要求携带归属声明。
+# 显式列出 license-files 后只会包含列出的文件，所以这里不能只写 LICENSE。
+license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "洛清辞" }]
 keywords = ["novel", "downloader", "legado", "epub", "api-first"]
 classifiers = [

@@ -4,6 +4,7 @@ name = "inkflow-api"
 dynamic = ["version"]
 description = "InkFlow HTTP API 服务（FastAPI）"
 requires-python = ">=3.12"
+license = "Apache-2.0"
 dependencies = [
     "inkflow-core",
     "inkflow-source",

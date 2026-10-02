@@ -156,6 +156,10 @@ jobs:
             \( -name '*.dmg' -o -name '*.AppImage' -o -name '*.zip' -o -name 'InkFlow-*.exe' \) \
             -exec cp {} release-assets/ \;
 
+          # 许可证与归属声明必须随产物一起分发：
+          # Apache-2.0 §4(a) 要求向接收者提供许可证副本，§4(d) 要求携带 NOTICE
+          cp LICENSE NOTICE release-assets/
+
           echo "将发布以下文件："
           ls -lh release-assets
 
