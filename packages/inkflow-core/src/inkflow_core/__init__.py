@@ -6,6 +6,7 @@
 
 from inkflow_core.config import Settings, get_settings, parse_size
 from inkflow_core.errors import ErrorCode, InkFlowError, NotFoundError, SourceError, TaskError
+from inkflow_core.log import JsonFormatter, setup_logging
 from inkflow_core.models import (
     TASK_TRANSITIONS,
     Book,
@@ -94,6 +95,9 @@ __all__ = [
     "NotFoundError",
     "SourceError",
     "TaskError",
+    # log
+    "JsonFormatter",
+    "setup_logging",
     # normalize
     "normalize_text",
     "normalize_book_name",
