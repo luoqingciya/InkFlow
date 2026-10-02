@@ -63,8 +63,9 @@ M5 高级功能        ⬜ 未开始
 | 导出（TXT / EPUB / Markdown） | ✅ EPUB 手写，结构已校验 |
 | REST API + WebSocket | ✅ |
 | CLI（全部命令 + `--json`） | ✅ |
+| HTTP 缓存 | ✅ SQLite 落盘、LRU 淘汰、只缓存 GET（ADR-017） |
 | Electron 骨架（窗口 / 托盘 / 后端管理 / IPC 白名单） | ✅ 已实机验证 |
-| 测试（157 项） | ✅ 含下载链路与 WebSocket 自动化 |
+| 测试（189 项） | ✅ 含下载链路、WebSocket 与缓存 |
 | 文档（17 份） | ✅ |
 | CI（测试流水线） | ✅ Ubuntu + Windows 双平台 |
 | CD（打包 + 发版） | ✅ 三平台后端 + CLI + 三平台安装包，push tag 自动发布 |
@@ -75,7 +76,6 @@ M5 高级功能        ⬜ 未开始
 
 | 事项 | 说明 | 优先级 |
 |---|---|---|
-| 缓存层落地 | `cache` 表已建，`HttpCache` 协议无默认实现 | 中 |
 | 日志落盘 | 配置项已定义（轮转 / JSON Lines），实现待补 | 中 |
 | 代码签名 | Windows SmartScreen 与 macOS Gatekeeper 会告警 | 中 |
 | macOS / Linux 打包产物实机验证 | 流水线会产出，但未在真机跑过 | 中 |
@@ -331,12 +331,42 @@ Success: no issues found in 87 source files
 
 任务层重试的设计取舍见 [ADR-016](../architecture/decisions.md)。
 
+### 2026-10-02 · HTTP 缓存落地
+
+`HttpCache` 协议与 `http_cache` 表早就建好了，`HttpClient` 里的读写逻辑
+也齐了 —— 唯独没有默认实现，所以缓存从未真正生效。这次补上。
+
+```text
+$ uv run pytest -q
+189 passed
+
+$ uv run ruff check .
+All checks passed!
+
+$ uv run mypy .
+Success: no issues found in 89 source files
+```
+
+- **实现**：`inkflow-api/services/cache.py` 的 `SqliteHttpCache`。
+  放装配层而非 source —— 缓存要落 SQLite，而书源引擎不依赖 sqlalchemy。
+- **只缓存 GET**：POST 有副作用，复用旧响应等于返回错误结果。
+- **LRU 淘汰**：依据 `hit_at`，从未命中的按 `created_at` 排。
+- **过期惰性删除**：读到就扔，不引入后台清扫任务。
+- **可观测**：`/api/v1/system/info` 新增 `cache` 字段（条目数 / 体积 / 过期数）。
+
+新增 `tests/integration/test_cache.py`（32 项）。其中一个测试是
+**把 mock 站点关掉之后再取一次** —— 只断言 `from_cache` 不够，
+那个标志是自己设的；断掉网络还能拿到内容，才证明真的没走网络。
+
+取舍见 [ADR-017](../architecture/decisions.md)。
+
 ### 尚未验证
 
 - Electron 打包产物在 macOS / Linux 上未实机验证（Windows 已验）
 - 桌面端只读安装位置（回退到 `~/.inkflow`）的分支未实机验证
 - 未对真实网站书源做兼容性验证
-- 缓存层与日志落盘尚未实现，因此无测试
+- 日志落盘尚未实现，因此无测试
+- 缓存未在真实站点上跑过长期运行（容量淘汰只在测试里验证过）
 
 ---
 

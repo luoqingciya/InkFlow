@@ -81,9 +81,20 @@ token 由后端每次启动时生成，通过两种方式获得：
   "export_formats": ["epub", "markdown", "txt"],
   "source_formats": ["legado-json", "native-yaml"],
   "python_version": "3.12.13",
-  "platform": "Windows-11-10.0.26300-SP0"
+  "platform": "Windows-11-10.0.26300-SP0",
+  "cache": {
+    "enabled": true,
+    "entries": 128,
+    "size_bytes": 4718592,
+    "expired_entries": 3,
+    "max_size_bytes": 2147483648
+  }
 }
 ```
+
+`cache` 是 HTTP 响应缓存的概况。缓存关闭时字段形状不变，只是取零值
+（`enabled: false`、`max_size_bytes: null`），客户端不需要分支处理。
+详见 [ADR-017](../architecture/decisions.md)。
 
 ---
 
