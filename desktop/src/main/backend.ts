@@ -18,8 +18,8 @@
  */
 
 import { spawn, type ChildProcessByStdio } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { accessSync, constants, existsSync, mkdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { Readable } from 'node:stream'
 
@@ -72,6 +72,39 @@ function isExecutable(command: string): boolean {
 }
 
 /**
+ * 决定后端的数据目录。
+ *
+ * **便携优先**：数据放在程序所在目录下的 `.inkflow`，
+ * 拷贝整个文件夹即可迁移，不会散落到用户主目录里。
+ *
+ * 但安装位置不一定可写 —— macOS 的 `.app` 内部是只读的，
+ * 部分 Linux 安装路径同理。因此逐个候选探测，全都不可写时
+ * 退到 Electron 的用户数据目录，而不是硬往只读位置写。
+ */
+function resolveDataHome(): string {
+  const candidates: string[] = []
+
+  if (app.isPackaged) {
+    candidates.push(join(dirname(app.getPath('exe')), '.inkflow'))
+  } else {
+    // 开发模式：仓库根目录（app.getAppPath() 是 desktop/）
+    candidates.push(join(app.getAppPath(), '..', '.inkflow'))
+  }
+  candidates.push(join(app.getPath('userData'), '.inkflow'))
+
+  for (const candidate of candidates) {
+    try {
+      mkdirSync(candidate, { recursive: true })
+      accessSync(candidate, constants.W_OK)
+      return candidate
+    } catch {
+      continue
+    }
+  }
+  return candidates[candidates.length - 1]
+}
+
+/**
  * 决定启动哪个后端。
  *
  * 打包后必须用随包分发的可执行文件 —— 用户机器上不一定有 Python，
@@ -103,9 +136,15 @@ export class BackendProcess {
   private child: BackendChild | null = null
   private connection: BackendConnection | null = null
   private stopping = false
+  private resolvedDataHome: string | null = null
 
   get info(): BackendConnection | null {
     return this.connection
+  }
+
+  /** 数据目录，供 UI 展示「数据存在哪」或实现「打开数据目录」。 */
+  get dataHome(): string | null {
+    return this.resolvedDataHome
   }
 
   get isRunning(): boolean {
@@ -125,12 +164,19 @@ export class BackendProcess {
     if (options.port !== undefined) args.push('--port', String(options.port))
     if (options.noToken) args.push('--no-token')
 
+    // 显式指定数据目录：后端自己也会推导，但桌面端更清楚
+    // 「用户把程序放在哪」，由它决定比让后端猜更可靠
+    const dataHome = resolveDataHome()
+    this.resolvedDataHome = dataHome
+
     console.log(`[inkflow-backend] 启动：${launch.command} ${args.join(' ')}`)
+    console.log(`[inkflow-backend] 数据目录：${dataHome}`)
 
     this.child = spawn(launch.command, args, {
       cwd: launch.cwd,
       env: {
         ...process.env,
+        INKFLOW_HOME: dataHome,
         // 不缓冲输出，否则握手行要等缓冲区满才吐出来
         PYTHONUNBUFFERED: '1',
         // 本机回环请求不该走系统代理

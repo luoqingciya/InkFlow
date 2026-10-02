@@ -20,12 +20,15 @@ jobs:
           - os: windows-latest
             artifact: backend-windows
             binary: inkflow-server.exe
+            cli: inkflow.exe
           - os: ubuntu-latest
             artifact: backend-linux
             binary: inkflow-server
+            cli: inkflow
           - os: macos-latest
             artifact: backend-macos
             binary: inkflow-server
+            cli: inkflow
     steps:
       - uses: actions/checkout@v4
 
@@ -38,8 +41,12 @@ jobs:
       - name: 同步依赖
         run: uv sync --all-packages
 
-      - name: 打包为单文件可执行程序
+      - name: 打包后端为单文件可执行程序
         run: uv run pyinstaller packaging/inkflow-server.spec --noconfirm
+
+      - name: 打包 CLI 为单文件可执行程序
+        # CLI 是纯 HTTP 客户端，与后端分开打包，体积小得多
+        run: uv run pyinstaller packaging/inkflow-cli.spec --noconfirm
 
       - name: 冒烟测试
         # 打包产物跑不起来是这类流水线最常见的失败模式，
@@ -49,7 +56,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.binary }}
+          path: |
+            dist/${{ matrix.binary }}
+            dist/${{ matrix.cli }}
           if-no-files-found: error
           retention-days: 7
 
@@ -109,6 +118,7 @@ jobs:
           name: desktop-${{ matrix.os }}
           path: |
             desktop/release/*.exe
+            desktop/release/*.zip
             desktop/release/*.dmg
             desktop/release/*.AppImage
           if-no-files-found: error
@@ -131,15 +141,19 @@ jobs:
         run: |
           mkdir -p release-assets
 
-          # 后端必须按平台重命名：Linux 与 macOS 的产物都叫 inkflow-server，
-          # 直接 cp 到同一目录会互相覆盖，最后只剩一个
+          # 后端与 CLI 都必须按平台重命名：Linux 与 macOS 的产物同名
+          # （inkflow-server / inkflow），直接 cp 到同一目录会互相覆盖
           cp artifacts/backend-windows/inkflow-server.exe release-assets/inkflow-server-windows-x64.exe
+          cp artifacts/backend-windows/inkflow.exe        release-assets/inkflow-cli-windows-x64.exe
           cp artifacts/backend-linux/inkflow-server        release-assets/inkflow-server-linux-x64
+          cp artifacts/backend-linux/inkflow               release-assets/inkflow-cli-linux-x64
           cp artifacts/backend-macos/inkflow-server        release-assets/inkflow-server-macos
+          cp artifacts/backend-macos/inkflow               release-assets/inkflow-cli-macos
 
-          # 桌面端安装包（InkFlow-*.exe 排除了后端的 inkflow-server.exe）
+          # 桌面端安装包与免安装 zip
+          # （InkFlow-*.exe 只匹配安装版，不会命中后端的 inkflow-server.exe）
           find artifacts -type f \
-            \( -name '*.dmg' -o -name '*.AppImage' -o -name 'InkFlow-*.exe' \) \
+            \( -name '*.dmg' -o -name '*.AppImage' -o -name '*.zip' -o -name 'InkFlow-*.exe' \) \
             -exec cp {} release-assets/ \;
 
           echo "将发布以下文件："

@@ -77,9 +77,23 @@ macOS 上只能产出 Mach-O。所以必须在三个平台各跑一次。
 
 | 平台 | 文件 |
 |---|---|
-| Windows | `InkFlow-<版本>-setup.exe`（安装版）、`InkFlow-<版本>-portable.exe`（免安装版） |
+| Windows | `InkFlow-<版本>-setup.exe`（安装版）、`InkFlow-<版本>-win-x64.zip`（免安装） |
 | macOS | `InkFlow-<版本>-<arch>.dmg`（arm64 + x64） |
 | Linux | `InkFlow-<版本>.AppImage` |
+
+**免安装版用 zip 而不是 portable.exe**：zip 解压后就是一个完整目录，
+数据目录（`.inkflow`）与程序同级，整个文件夹拷走即可迁移；
+portable.exe 每次运行会自解压到临时目录，数据反而落不到程序旁边。
+
+另外还单独发布**命令行工具**与**后端本体**：
+
+| 文件 | 说明 |
+|---|---|
+| `inkflow-cli-windows-x64.exe` / `-linux-x64` / `-macos` | CLI，纯 HTTP 客户端，约 19 MB |
+| `inkflow-server-windows-x64.exe` / `-linux-x64` / `-macos` | 后端，约 27 MB |
+
+桌面端安装包里**已经内嵌**了对应平台的后端，这两组产物是给
+「只想跑服务」或「想用命令行」的人准备的。
 
 ### ③ 发布（`publish`）
 

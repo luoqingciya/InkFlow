@@ -551,13 +551,34 @@ def export(
 # ================================================================ 入口
 
 
-def main() -> None:
-    """``inkflow`` 入口。"""
+def main() -> int:
+    """``inkflow`` 入口。
+
+    Returns:
+        进程退出码。与 ``inkflow-server`` 的入口保持一致 —— 两者都会被
+        PyInstaller 的入口脚本用 ``sys.exit(main())`` 包一层。
+    """
+    _force_utf8_output()
     try:
         app()
     except KeyboardInterrupt:  # pragma: no cover
-        sys.exit(130)
+        return 130
+    return 0
+
+
+def _force_utf8_output() -> None:
+    """把标准输出 / 错误固定为 UTF-8。
+
+    Windows 控制台默认是 cp936，中文输出在**管道重定向**时会产生非 UTF-8
+    字节 —— 终端里看着正常，接给别的程序就乱码。CLI 是可组合的工具，
+    输出编码必须可预期。
+
+    终端显示不受影响：现代终端（Windows Terminal、VS Code）都按 UTF-8 解码。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
 
 
 if __name__ == "__main__":  # pragma: no cover
-    main()
+    sys.exit(main())

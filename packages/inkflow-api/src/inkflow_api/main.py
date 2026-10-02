@@ -98,7 +98,7 @@ async def _serve(
 
 
 def _write_server_file(host: str, port: int, token: str) -> None:
-    """把监听地址与 token 写到 ``~/.inkflow/server.json``。
+    """把监听地址与 token 写到数据目录下的 ``server.json``。
 
     CLI 靠这个文件找到正在运行的服务 —— 端口是系统分配的，
     命令行没法猜。文件权限收紧到仅当前用户可读。
@@ -106,7 +106,7 @@ def _write_server_file(host: str, port: int, token: str) -> None:
     import json
     import os
 
-    path = get_paths().home / "server.json"
+    path = get_paths().handshake_file
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
@@ -122,7 +122,7 @@ def _write_server_file(host: str, port: int, token: str) -> None:
 def _remove_server_file() -> None:
     """服务退出时清理握手文件。"""
     with contextlib.suppress(OSError):
-        (get_paths().home / "server.json").unlink(missing_ok=True)
+        get_paths().handshake_file.unlink(missing_ok=True)
 
 
 def main(argv: list[str] | None = None) -> int:

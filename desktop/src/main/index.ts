@@ -109,7 +109,9 @@ function registerIpc(): void {
     electron: process.versions.electron,
     node: process.versions.node,
     platform: process.platform,
-    packaged: app.isPackaged
+    packaged: app.isPackaged,
+    // 数据目录是便携的（默认在程序目录下），UI 需要能告诉用户它在哪
+    dataHome: backend.dataHome
   }))
 
   ipcMain.handle('inkflow:open-path', async (_event, target: string): Promise<string> => {

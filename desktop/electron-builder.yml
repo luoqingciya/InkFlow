@@ -20,12 +20,16 @@ extraResources:
   - from: resources/icon.png
     to: icon.png
 
-# Windows：安装版 + 免安装版双分发
+# Windows：安装版 + 免安装压缩包双分发
+#
+# 免安装版用 zip 而不是 portable.exe：zip 解压后就是一个完整目录，
+# 数据目录（.inkflow）与程序同级，整个文件夹拷走即可迁移；
+# 而 portable.exe 每次运行会解压到临时目录，数据目录反而落不到程序旁边。
 win:
   target:
     - target: nsis
       arch: [x64]
-    - target: portable
+    - target: zip
       arch: [x64]
   icon: resources/icon.png
   artifactName: ${productName}-${version}-${arch}.${ext}
@@ -40,8 +44,9 @@ nsis:
   artifactName: ${productName}-${version}-setup.${ext}
   deleteAppDataOnUninstall: false
 
-portable:
-  artifactName: ${productName}-${version}-portable.${ext}
+# zip 免安装版：解压即用，数据落在解压目录的 .inkflow 下
+zip:
+  artifactName: ${productName}-${version}-win-x64.${ext}
 
 mac:
   target:

@@ -20,6 +20,8 @@ export interface AppInfo {
   node: string
   platform: string
   packaged: boolean
+  /** 数据目录；后端尚未启动时为 null */
+  dataHome: string | null
 }
 
 export interface FileDialogOptions {

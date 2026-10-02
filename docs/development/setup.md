@@ -187,8 +187,33 @@ uv run inkflow-server
 
 模板见 [`config.example.toml`](../../config.example.toml)。
 
-数据目录默认为 `~/.inkflow`，可用 `INKFLOW_HOME` 整体重定向
-（测试与便携版分发依赖这一点）。
+### 数据目录（便携优先）
+
+数据默认放在**运行目录**下的 `.inkflow/`，拷贝整个程序目录即可迁移：
+
+```text
+.inkflow/
+├── config/       运行时配置
+├── database/     inkflow.db
+├── cache/        HTTP 与正文缓存
+├── exports/      导出的 TXT / EPUB
+├── logs/
+├── sources/      导入的书源
+└── server.json   后端握手信息（端口 + token），退出时删除
+```
+
+解析顺序：
+
+1. `INKFLOW_HOME` 环境变量 —— 显式指定（测试、特殊部署）
+2. 运行目录下的 `.inkflow` —— 打包后是**可执行文件所在目录**，源码运行是**当前工作目录**
+3. `~/.inkflow` —— 兜底
+
+第 3 步不是多余的：macOS 的 `.app` 内部、部分 Linux 安装位置是只读的，
+硬往里写只会让程序起不来。桌面端也会自己探测可写性后再决定。
+
+> **副作用**：CLI 在不同目录下运行会用到不同的数据目录。
+> 想让 Desktop 与 CLI 共用数据，把它们放在同一目录即可 ——
+> CLI 会在所有候选目录里找 `server.json`，找得到就能连上。
 
 ---
 

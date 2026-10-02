@@ -36,8 +36,15 @@ from inkflow_core.normalize import (
     normalize_book_name,
     normalize_text,
 )
-from inkflow_core.paths import ENV_HOME, InkFlowPaths, get_paths, inkflow_home
-from inkflow_core.storage import Database
+from inkflow_core.paths import (
+    ENV_HOME,
+    InkFlowPaths,
+    candidate_homes,
+    get_paths,
+    inkflow_home,
+    reset_home_cache,
+    runtime_dir,
+)
 from inkflow_core.utils import (
     new_book_id,
     new_chapter_id,
@@ -51,7 +58,7 @@ from inkflow_core.utils import (
 )
 
 #: 全项目唯一的版本号来源。其余包通过 [tool.hatch.version] 从这里读取。
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0.dev1"
 
 __all__ = [
     "__version__",
@@ -95,8 +102,11 @@ __all__ = [
     "hash_bytes",
     # paths
     "InkFlowPaths",
+    "candidate_homes",
     "get_paths",
     "inkflow_home",
+    "reset_home_cache",
+    "runtime_dir",
     "ENV_HOME",
     # storage
     "Database",
@@ -111,3 +121,19 @@ __all__ = [
     "new_task_item_id",
     "new_trace_id",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """惰性导出 ``Database``。
+
+    ``inkflow_core.storage`` 会拉起 SQLAlchemy，而 CLI 只用得到路径约定与
+    错误码 —— 无条件导入会让纯 HTTP 客户端白白带上整个数据库层。
+
+    这是 PEP 562 的模块级 ``__getattr__``，对
+    ``from inkflow_core import Database`` 的使用方完全透明。
+    """
+    if name == "Database":
+        from inkflow_core.storage import Database
+
+        return Database
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
