@@ -54,7 +54,15 @@ CLI 与 Electron 桌面端都只是客户端，业务核心只有一份。
   需先 `npm install`）
 - 发版流程见 `docs/development/cicd.md`
 
-**本机环境陷阱（验证桌面端必看）**：
+**本机环境陷阱（构建后清理、验证桌面端必看）**：
+
+- **WorkBuddy 自身会监视工作区文件并持有句柄**。刚构建出来的产物
+  （`desktop/release/`、`desktop/build-*/`、`app.asar` 等）用 `rm -rf` 或
+  `Remove-Item` 会报「另一个程序正在使用此文件」，且 `tasklist` 里找不到
+  任何 inkflow / electron 进程 —— **占用者就是宿主自己**，不是残留进程。
+  应对：先停掉相关进程，等几秒再删；实在删不掉就先留着（`.gitignore` 已覆盖），
+  过一会儿重试通常就能删。
+  别再往「electron-builder 锁文件」「杀毒软件」「索引服务」方向排查了。
 
 - 环境**预设了 `ELECTRON_RUN_AS_NODE=1`**，会让 Electron 应用退化成 Node 运行
   —— 进程在跑但什么都不做，且 Chromium 参数会报 `bad option`（Node 的错误格式）。
