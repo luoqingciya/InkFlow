@@ -43,6 +43,28 @@ CLI 与 Electron 桌面端都只是客户端，业务核心只有一份。
 6. **书源配置只能收紧全局值**，不能放宽。
 7. **Renderer 不接触 Node 权限**，只走 preload 的具名接口。
 
+## 仓库与流水线
+
+- GitHub：**https://github.com/luoqingciya/InkFlow**（public，SSH remote）
+- **CI**（push / PR）：版本号一致性 → ruff → mypy → pytest，
+  矩阵 Ubuntu + Windows；另有桌面端类型检查与构建
+- **Release**（push tag `v*`）：三平台 PyInstaller 打包后端 → 冒烟测试 →
+  取回对应平台后端 → electron-builder 打安装包 → 创建 Release
+- 本地一键检查：`uv run python scripts/check.py`（**含前端类型检查**，
+  需先 `npm install`）
+- 发版流程见 `docs/development/cicd.md`
+
+**CI 上踩过的坑（改代码时留意）**：
+
+- GitHub Actions 的 **Windows runner 控制台是 cp1252**，脚本打印中文会
+  `UnicodeEncodeError`。已在脚本入口统一 `reconfigure(encoding="utf-8")`，
+  CI 另设 `PYTHONUTF8=1`
+- `spawn` 配 `stdio: ['ignore','pipe','pipe']` 时返回类型是
+  `ChildProcessByStdio<null, Readable, Readable>`，不是
+  `ChildProcessWithoutNullStreams`（stdin 是 null）
+- PyInstaller spec 里的**相对路径是相对运行时 cwd**，不是 spec 所在目录，
+  要用注入的 `SPECPATH`
+
 ## 命令
 
 ```bash

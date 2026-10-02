@@ -138,4 +138,7 @@ jobs:
           files: release-assets/*
           generate_release_notes: true
           draft: false
+          # 含预发布后缀的 tag（如 v0.1.0-dev.0）标为 prerelease，
+          # 这样不会占用 GitHub 的「Latest」标记
+          prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: false
