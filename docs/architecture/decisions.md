@@ -407,11 +407,63 @@ CDN 抖动这类问题往往「这次不行、过几秒就行」，缺了任务�
 
 ---
 
+## ADR-018 日志用自管 handler，不依赖 basicConfig
+
+**背景**
+
+`log` 配置段（级别 / JSON Lines / 轮转）与 `paths.logs_dir` 早已就位，
+但**没有任何代码安装 handler** —— 日志从来没落过盘。那两处
+`logging.getLogger("inkflow.api")` 实际走的是 Python 的 last-resort handler，
+只在 stderr 打一条无格式的消息，进程一退就没了。
+
+**决策**
+
+**1. 不用 `logging.basicConfig`。**
+
+它只在 root logger **尚无 handler** 时生效。而 uvicorn 启动时会抢先装自己的
+handler，于是我们的配置被**静默忽略** —— 症状是「配置写了、代码也调了，
+日志就是没落盘」，而且不报任何错。改为显式 `addHandler`。
+
+**2. 启动 uvicorn 时传 `log_config=None`。**
+
+uvicorn 默认给 `uvicorn` / `uvicorn.access` 配的 logger 是 `propagate=False`，
+日志会**截在它自己那里**，root 上的文件 handler 永远收不到。
+传 `log_config=None` 让它不装 handler，日志自然向上冒泡到 root。
+
+**3. 文件 handler 挂 root，不挂 `inkflow`。**
+
+否则 uvicorn 与其他库的日志都不落盘。挂 root 才能「一次配置，全进程生效」；
+级别由配置控制，所以不会因为挂 root 就被第三方库的 DEBUG 刷屏。
+
+**4. 写不进去不抛错。**
+
+日志目录只读（macOS 的 `.app` 内部、部分 Linux 安装位置）时降级为
+仅控制台输出，服务照常启动。日志是辅助设施，不该带走主流程。
+
+**5. `encoding="utf-8"` 必须显式指定。**
+
+Windows 默认 cp1252，中文日志会乱码甚至抛 `UnicodeEncodeError`。
+
+**后果**
+
+- 好处：日志真的落盘，且 **uvicorn 的启动日志也在里面** ——
+  排障时「服务起不来」这类问题终于有东西可查。
+- 好处：`json_logs=true` 时每行一条独立 JSON，可直接接日志采集器；
+  `extra={...}` 传的业务字段（如 `task_id`）会被一并输出。
+- 好处：`delay=True`，没日志就不产生空文件。
+- 代价：**root logger 是进程级状态**。测试必须还原 handler，
+  否则用例之间互相污染（前一个用例的 handler 把日志写进它的临时目录）。
+  已用 autouse fixture 处理。
+- 代价：日志随数据目录走（`logs/inkflow.log`），换目录即换日志 ——
+  这与 ADR-015 的便携化目标一致，但意味着**没有全局的日志汇聚点**。
+
+---
+
 ## 待定决策
 
 | 议题 | 说明 |
 |---|---|
 | 全局并发闸门的共享 | 当前每个书源各自持有 `RequestGate`，域名级并发并未跨书源共享 |
 | 插件机制 | 规划书 §65 的插件体系尚未落地，当前只有工厂注册 |
-| 日志落盘 | 配置项已定义（轮转、JSON Lines），实现待补 |
 | 退避的参数化 | 重试轮数与退避基数目前共用 `download` 段；若将来要按书源定制，需拆出独立段 |
+| 日志汇聚 | 日志随数据目录走，没有全局汇聚点；多实例部署时需另做收集 |

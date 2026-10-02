@@ -19,6 +19,7 @@ import uvicorn
 
 from inkflow_api.app import create_app
 from inkflow_core.config import get_settings
+from inkflow_core.log import LOG_FILENAME, setup_logging
 from inkflow_core.paths import get_paths
 
 __all__ = ["build_parser", "main"]
@@ -69,6 +70,9 @@ async def _serve(
         access_log=False,
         # 关闭 uvicorn 自带的信号处理，避免与 asyncio.run 冲突
         loop="asyncio",
+        # 让 uvicorn 不要装自己的 handler：它的 logger 是 propagate=False，
+        # 会把日志截在自己那里，root 上的文件 handler 就永远收不到
+        log_config=None,
     )
     server = uvicorn.Server(config)
     runner = asyncio.create_task(server.serve())
@@ -137,7 +141,13 @@ def main(argv: list[str] | None = None) -> int:
 
     host = args.host or settings.server.host
     port = args.port if args.port is not None else settings.server.port
-    log_level = args.log_level or settings.log.level
+    if args.log_level:
+        settings.log.level = args.log_level.upper()
+    log_level = settings.log.level
+
+    # 日志要先于其它组件配好：否则启动阶段的失败信息落不了盘，
+    # 而「服务起不来」正是最需要日志的时候
+    log_file = setup_logging(settings.log, paths.logs_dir)
 
     app = create_app(settings, require_token=False if args.no_token else None)
     if args.no_token and not args.quiet:
@@ -147,6 +157,8 @@ def main(argv: list[str] | None = None) -> int:
         print("InkFlow —— API-First 小说资源聚合与下载平台")
         print(f"  数据目录      {paths.home}")
         print(f"  配置文件      {paths.config_file}")
+        if log_file is not None:
+            print(f"  日志文件      {paths.logs_dir / LOG_FILENAME}")
 
     if args.reload:
         # reload 模式交给 uvicorn 自己管理进程，此时无法打印实际端口

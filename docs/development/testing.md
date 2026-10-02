@@ -8,7 +8,8 @@ tests/
 │   ├── test_models.py            领域模型、状态机、归一化
 │   ├── test_normalizer.py        正文清洗
 │   ├── test_legado_compiler.py   规则编译
-│   └── test_export.py            TXT / EPUB / Markdown
+│   ├── test_export.py            TXT / EPUB / Markdown
+│   └── test_log.py               日志落盘 / 轮转 / JSON Lines
 │
 ├── integration/     API 与适配器，走真实 HTTP（对 mock 站点）
 │   ├── test_api.py               路由、鉴权、错误格式、书源导入
@@ -215,6 +216,31 @@ assert second.from_cache is True
   按写入时间排，所以测淘汰顺序时要控制时间。测试里用 `monkeypatch`
   替换 `inkflow_api.services.cache.utcnow`，比 `sleep` 可靠且快。
 
+### 日志测试：为什么不能只断言「函数被调用了」
+
+`test_log.py` 的核心断言是**真的写一条日志，再从文件里读回来**：
+
+```python
+setup_logging(LogConfig(), tmp_path)
+logging.getLogger("inkflow.test").warning("落盘测试")
+assert "落盘测试" in (tmp_path / LOG_FILENAME).read_text(encoding="utf-8")
+```
+
+只断言「handler 被加上了」是不够的 —— handler 加上了但级别不对、编码不对、
+或者 uvicorn 把日志截走了，测试照样绿，而线上就是没日志。
+
+几条容易踩的边界：
+
+- **root logger 是进程级状态**，必须用 autouse fixture 还原 handler，
+  否则前一个用例的 handler 会把后一个用例的日志写进它的临时目录。
+  模块级的 `_file_handler` 也要一起重置，否则幂等判断会误判。
+- **`delay=True` 意味着没日志就不产生文件** —— 有专门用例断言这一点，
+  免得将来有人去掉 delay，变成每次启动都留一个空文件。
+- **轮转要真的写超上限**（写 1.2MB 越过 1MB 阈值）。只读 `maxBytes`
+  配置值证明不了轮转真的会发生。
+- **中文往返要单独测**：Windows 默认 cp1252，没显式指定编码时
+  中文会乱码甚至抛 `UnicodeEncodeError`。
+
 ### 书源定义共享
 
 测试书源定义放在 [`tests/sources_data.py`](../../tests/sources_data.py)，
@@ -259,12 +285,12 @@ API 测试与兼容性测试共用同一份 —— 否则两处会各自漂移�
 
 ```bash
 uv run pytest -q
-# 189 passed
+# 208 passed
 ```
 
 | 层 | 数量 | 覆盖内容 |
 |---|---|---|
-| unit | 64 | 模型与状态机、归一化、正文清洗、规则编译（含各类语法分支）、三种导出器、EPUB 结构合法性 |
+| unit | 83 | 模型与状态机、归一化、正文清洗、规则编译（含各类语法分支）、三种导出器、EPUB 结构合法性、**日志落盘与轮转** |
 | integration | 112 | 全部路由、鉴权、错误结构、书源导入幂等、SSRF 拦截、原生书源完整流程、**下载任务全链路**、**HTTP 缓存**、**WebSocket 进度推送** |
 | source | 13 | Legado L0/L1、等级判定、JS 规则报错、规则失效报错、AST 调试接口 |
 
@@ -273,6 +299,7 @@ uv run pytest -q
 | 文件 | 数量 |
 |---|---|
 | `unit/test_legado_compiler.py` | 22 |
+| `unit/test_log.py` | 19 |
 | `unit/test_export.py` | 17 |
 | `unit/test_models.py` | 15 |
 | `unit/test_normalizer.py` | 10 |
@@ -292,9 +319,9 @@ uv run pytest -q
 | 缺口 | 说明 |
 |---|---|
 | 桌面端 | 无前端测试（`vue-tsc` 类型检查是唯一的静态保障） |
-| 日志落盘 | 尚未实现，因此无测试 |
 | 真实书源样本 | 只有 mock 站点，兼容性评分尚未建立 |
 | 缓存的长期运行 | 容量淘汰只在测试里验证过，未在真实使用中跑过 |
+| 日志的长期运行 | 轮转只在单测里触发过一次，未在长时间运行中验证 |
 
 ---
 

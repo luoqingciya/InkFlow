@@ -4,8 +4,11 @@
 依赖方向：``core ← source ← legado``，``core ← api``，``api ← cli``。
 """
 
+from typing import TYPE_CHECKING
+
 from inkflow_core.config import Settings, get_settings, parse_size
 from inkflow_core.errors import ErrorCode, InkFlowError, NotFoundError, SourceError, TaskError
+from inkflow_core.log import JsonFormatter, setup_logging
 from inkflow_core.models import (
     TASK_TRANSITIONS,
     Book,
@@ -60,6 +63,11 @@ from inkflow_core.utils import (
 #: 全项目唯一的版本号来源。其余包通过 [tool.hatch.version] 从这里读取。
 __version__ = "0.1.0.dev1"
 
+if TYPE_CHECKING:
+    # 仅供类型检查器与 IDE 解析 ``__all__`` 里的 "Database"。
+    # 运行时走下面的模块级 __getattr__ 惰性导入，这里不会真的执行。
+    from inkflow_core.storage import Database
+
 __all__ = [
     "__version__",
     # models
@@ -94,6 +102,9 @@ __all__ = [
     "NotFoundError",
     "SourceError",
     "TaskError",
+    # log
+    "JsonFormatter",
+    "setup_logging",
     # normalize
     "normalize_text",
     "normalize_book_name",

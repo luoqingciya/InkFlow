@@ -413,11 +413,19 @@ class DownloadTaskManager:
         if task.status is TaskStatus.PAUSED:
             return
 
-        task.transition_to(TaskStatus.COMPLETED)
-        self.library.save_task(task)
-
+        # 先导出、再置终态：``COMPLETED`` 的语义是「产物已就绪」。
+        # 反过来的话，轮询 REST 的客户端会在文件写完之前就读到 COMPLETED，
+        # 拿到 output_path 却读不到文件。
+        #
+        # 导出失败会向上抛，由 _execute 的兜底置为 FAILED —— 这也是对的：
+        # 拿不到产物就不该算完成。若把导出放在置终态之后，
+        # 兜底会因「已是终态」而不改状态，结果任务显示 COMPLETED
+        # 却发出了 FAILED 事件。
         if task.output_format:
             await self._export(task)
+
+        task.transition_to(TaskStatus.COMPLETED)
+        self.library.save_task(task)
 
         self.broker.publish(
             task_id,
