@@ -1,0 +1,25 @@
+# 默认按文本处理，统一以 LF 存入仓库。
+#
+# 不加这条的话，Windows 上 core.autocrlf=true 会把文件存成 CRLF，
+# 于是 shell 脚本在 Linux / WSL 上会因 `#!/usr/bin/env bash\r` 报
+# bad interpreter —— 这类问题排查起来很费时间，不如从源头掐掉。
+* text=auto eol=lf
+
+# Windows 专用脚本必须保留 CRLF，否则 cmd.exe 解析会出问题
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# 二进制文件不要做任何转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.epub binary
+
+# 生成的锁文件在 diff 里意义不大，但必须入库
+uv.lock text eol=lf linguist-generated=true
+desktop/package-lock.json text eol=lf linguist-generated=true
