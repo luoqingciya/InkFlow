@@ -64,8 +64,9 @@ M5 高级功能        ⬜ 未开始
 | REST API + WebSocket | ✅ |
 | CLI（全部命令 + `--json`） | ✅ |
 | HTTP 缓存 | ✅ SQLite 落盘、LRU 淘汰、只缓存 GET（ADR-017） |
+| 日志落盘 | ✅ 轮转 + JSON Lines，uvicorn 日志一并入库（ADR-018） |
 | Electron 骨架（窗口 / 托盘 / 后端管理 / IPC 白名单） | ✅ 已实机验证 |
-| 测试（189 项） | ✅ 含下载链路、WebSocket 与缓存 |
+| 测试（208 项） | ✅ 含下载链路、WebSocket、缓存与日志 |
 | 文档（17 份） | ✅ |
 | CI（测试流水线） | ✅ Ubuntu + Windows 双平台 |
 | CD（打包 + 发版） | ✅ 三平台后端 + CLI + 三平台安装包，push tag 自动发布 |
@@ -76,7 +77,6 @@ M5 高级功能        ⬜ 未开始
 
 | 事项 | 说明 | 优先级 |
 |---|---|---|
-| 日志落盘 | 配置项已定义（轮转 / JSON Lines），实现待补 | 中 |
 | 代码签名 | Windows SmartScreen 与 macOS Gatekeeper 会告警 | 中 |
 | macOS / Linux 打包产物实机验证 | 流水线会产出，但未在真机跑过 | 中 |
 | 桌面端只读安装位置的回退分支 | `~/.inkflow` 兜底路径未实机验证 | 低 |
@@ -360,13 +360,55 @@ Success: no issues found in 89 source files
 
 取舍见 [ADR-017](../architecture/decisions.md)。
 
+### 2026-10-02 · 日志落盘
+
+`log` 配置段（级别 / JSON Lines / 轮转）与 `logs_dir` 早就定义好了，
+但**没有任何代码安装 handler** —— 日志从来没落过盘。那两处
+`getLogger("inkflow.api")` 实际走的是 Python 的 last-resort handler，
+只在 stderr 打一条无格式消息，进程一退就没了。
+
+```text
+$ uv run pytest -q
+208 passed
+
+$ uv run ruff check .
+All checks passed!
+
+$ uv run mypy .
+Success: no issues found in 91 source files
+```
+
+- **实现**：`inkflow_core/log.py` 的 `setup_logging()` —— 挂 root handler，
+  文件（轮转）+ 控制台双输出。
+- **不用 `basicConfig`**：它只在 root 尚无 handler 时生效，会被 uvicorn 抢先，
+  然后**静默失效**。
+- **uvicorn 传 `log_config=None`**：它的 logger 是 `propagate=False`，
+  不这样处理日志会截在 uvicorn 自己那里，永远到不了文件。
+- **写不进去不抛错**：目录只读时降级为仅控制台输出，服务照常启动。
+- **端到端验证**：真起一次服务，确认 `logs/inkflow.log` 里出现了
+  uvicorn 的启动日志，且用的是我们的格式 —— 不只是「单测绿了」。
+
+新增 `tests/unit/test_log.py`（19 项）。取舍见 [ADR-018](../architecture/decisions.md)。
+
+### 顺带修掉的导出时序缺陷
+
+跑全量时 `test_custom_output_path_is_respected` 偶发失败，查下来是**真缺陷**：
+`_execute` 先把任务置为 `COMPLETED` 并落库，**之后**才导出文件。
+于是轮询 REST 的客户端会看到 `COMPLETED`，拿到 `output_path` 却读不到文件。
+
+更糟的是导出失败时：任务已是终态，兜底逻辑因「已是终态」而不改状态，
+却仍然发出 `FAILED` 事件 —— 状态与事实不符。
+
+改为**先导出、再置终态**。导出失败会向上抛，由兜底置为 FAILED ——
+「拿不到产物就不该算完成」。
+
 ### 尚未验证
 
 - Electron 打包产物在 macOS / Linux 上未实机验证（Windows 已验）
 - 桌面端只读安装位置（回退到 `~/.inkflow`）的分支未实机验证
 - 未对真实网站书源做兼容性验证
-- 日志落盘尚未实现，因此无测试
 - 缓存未在真实站点上跑过长期运行（容量淘汰只在测试里验证过）
+- 日志未在「长时间运行 + 轮转多次」的真实场景下验证过
 
 ---
 
