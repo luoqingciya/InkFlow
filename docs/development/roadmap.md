@@ -65,23 +65,31 @@ M5 高级功能        ⬜ 未开始
 | CLI（全部命令 + `--json`） | ✅ |
 | HTTP 缓存 | ✅ SQLite 落盘、LRU 淘汰、只缓存 GET（ADR-017） |
 | 日志落盘 | ✅ 轮转 + JSON Lines，uvicorn 日志一并入库（ADR-018） |
+| 封面下载 | ✅ 写入 EPUB，缺封面时自动补抓详情页（ADR-019） |
+| 正文插图下载 | ✅ 存到 `.inkflow/books/<id>/images/`（EPUB 内嵌待定，见下） |
+| 数据目录只读回退 | ✅ 实机验证：运行目录不可写时回退 `~/.inkflow` |
 | Electron 骨架（窗口 / 托盘 / 后端管理 / IPC 白名单） | ✅ 已实机验证 |
-| 测试（208 项） | ✅ 含下载链路、WebSocket、缓存与日志 |
+| 测试（218 项） | ✅ 含下载链路、WebSocket、缓存、日志与资源下载 |
 | 文档（17 份） | ✅ |
 | CI（测试流水线） | ✅ Ubuntu + Windows 双平台 |
 | CD（打包 + 发版） | ✅ 三平台后端 + CLI + 三平台安装包，push tag 自动发布 |
 | 数据目录便携化 | ✅ 默认落在运行目录下的 `.inkflow`（ADR-015） |
 | CLI 独立分发 | ✅ 单文件可执行程序，不依赖 Python 环境 |
 
-### M1 待补
+### 搁置
 
-| 事项 | 说明 | 优先级 |
-|---|---|---|
-| 代码签名 | Windows SmartScreen 与 macOS Gatekeeper 会告警 | 中 |
-| macOS / Linux 打包产物实机验证 | 流水线会产出，但未在真机跑过 | 中 |
-| 桌面端只读安装位置的回退分支 | `~/.inkflow` 兜底路径未实机验证 | 低 |
-| 封面下载 | `cover_url` 已抓取，未下载图片并写入 EPUB | 低 |
-| 资源下载器 | 正文内嵌图片（`ContentResult.images` 已收集，未下载） | 低 |
+以下两项**明确不做**，直到有实际需求（2026-10-02 决定）：
+
+| 事项 | 为什么搁置 |
+|---|---|
+| 代码签名 | 需要购买证书（Windows 代码签名证书 / Apple Developer 账号）。当前是预发布阶段，SmartScreen 与 Gatekeeper 的告警可接受；等准备正式分发时再处理 |
+| macOS / Linux 打包产物实机验证 | 流水线已能产出安装包，但手上没有真机。**这是真实缺口，不是「已验证」** —— 用户报告问题前无法确认它们能跑 |
+
+### 待定（需要先定架构）
+
+| 事项 | 说明 |
+|---|---|
+| EPUB 内嵌正文插图 | 图片已下载到本地，但 EPUB 里还是纯文本。要让插图出现在阅读器里，得让正文**保留图片位置** —— 当前 `clean_content` 是纯文本（normalizer 抽文本时丢掉了 `<img>`）。这属于「正文格式」的架构改动，影响三个导出器，需要单独决策 |
 
 ### 刻意不做
 
@@ -402,13 +410,51 @@ Success: no issues found in 91 source files
 改为**先导出、再置终态**。导出失败会向上抛，由兜底置为 FAILED ——
 「拿不到产物就不该算完成」。
 
+### 2026-10-02 · 封面 / 插图下载 + 版本 dev2
+
+把 M1 剩下的低优先级项做掉，两项中优先级**明确搁置**。
+
+```text
+$ uv run pytest -q
+218 passed
+
+$ uv run ruff check .          → All checks passed!
+$ uv run mypy .                → Success: no issues found in 91 source files
+$ uv run python scripts/check_version.py → 版本号一致（0.1.0.dev2）
+```
+
+**封面下载**：`ExportRequest` 与 EPUB 导出器**早就支持封面**，
+缺的只是「下载并填入」。过程中发现一个更根本的问题 ——
+**封面只存在于详情页规则里，搜索结果里没有**，所以不补抓详情页的话，
+这个功能永远不会生效。已在导出前补上（仅当缺封面时）。
+
+**插图下载**：`ContentResult.images` 之前被直接丢弃。现在从 `raw_content`
+提取地址（清洗后的正文是纯文本，不含 `<img>`），下载到
+`.inkflow/books/<id>/images/`，用相对地址去重。
+
+**只读回退实机验证**：把运行目录下的 `.inkflow` 做成文件（挡住 `mkdir`），
+确认正确回退到 `~/.inkflow`：
+
+```text
+候选路径：
+    C:\Users\...\Temp\rotest\.inkflow     ← 被文件阻挡，不可写
+    C:\Users\Luoqingci\.inkflow           ← 回退到这里
+最终解析结果：C:\Users\Luoqingci\.inkflow
+```
+
+**搁置**：代码签名（要买证书）、macOS / Linux 实机验证（没有真机）。
+后者是**真实缺口**，已在 roadmap 里标明「不是已验证」。
+
+新增 `tests/integration/test_assets.py`（10 项），mock 站点补了图片端点。
+取舍见 [ADR-019](../architecture/decisions.md)。
+
 ### 尚未验证
 
-- Electron 打包产物在 macOS / Linux 上未实机验证（Windows 已验）
-- 桌面端只读安装位置（回退到 `~/.inkflow`）的分支未实机验证
+- Electron 打包产物在 macOS / Linux 上未实机验证（Windows 已验）—— **已搁置**
 - 未对真实网站书源做兼容性验证
 - 缓存未在真实站点上跑过长期运行（容量淘汰只在测试里验证过）
 - 日志未在「长时间运行 + 轮转多次」的真实场景下验证过
+- 正文插图**只下载到本地，未嵌入 EPUB**（需先定「正文是否保留图片位置」）
 
 ---
 

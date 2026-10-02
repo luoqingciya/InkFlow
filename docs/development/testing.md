@@ -16,6 +16,7 @@ tests/
 │   ├── test_native_source.py     原生书源完整流程
 │   ├── test_download.py          下载任务全链路（含重试 / 暂停 / 取消）
 │   ├── test_cache.py             HTTP 缓存（存取 / 过期 / LRU 淘汰 / 只缓存 GET）
+│   ├── test_assets.py            封面与插图下载（真下载 + 真嵌入）
 │   └── test_websocket.py         进度推送（含真实 uvicorn 流式验证）
 │
 ├── source/          书源兼容性
@@ -285,13 +286,13 @@ API 测试与兼容性测试共用同一份 —— 否则两处会各自漂移�
 
 ```bash
 uv run pytest -q
-# 208 passed
+# 218 passed
 ```
 
 | 层 | 数量 | 覆盖内容 |
 |---|---|---|
 | unit | 83 | 模型与状态机、归一化、正文清洗、规则编译（含各类语法分支）、三种导出器、EPUB 结构合法性、**日志落盘与轮转** |
-| integration | 112 | 全部路由、鉴权、错误结构、书源导入幂等、SSRF 拦截、原生书源完整流程、**下载任务全链路**、**HTTP 缓存**、**WebSocket 进度推送** |
+| integration | 122 | 全部路由、鉴权、错误结构、书源导入幂等、SSRF 拦截、原生书源完整流程、**下载任务全链路**、**HTTP 缓存**、**封面与插图下载**、**WebSocket 进度推送** |
 | source | 13 | Legado L0/L1、等级判定、JS 规则报错、规则失效报错、AST 调试接口 |
 
 按文件看：
@@ -309,6 +310,7 @@ uv run pytest -q
 | `integration/test_websocket.py` | 16 |
 | `source/test_legado_compat.py` | 13 |
 | `integration/test_native_source.py` | 12 |
+| `integration/test_assets.py` | 10 |
 
 ---
 
