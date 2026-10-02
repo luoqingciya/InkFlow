@@ -32,7 +32,8 @@ win:
     - target: zip
       arch: [x64]
   icon: resources/icon.png
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  # nsis 会用下面的 nsis.artifactName 覆盖；zip 沿用这一条
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
 
 nsis:
   oneClick: false
@@ -43,10 +44,6 @@ nsis:
   shortcutName: InkFlow
   artifactName: ${productName}-${version}-setup.${ext}
   deleteAppDataOnUninstall: false
-
-# zip 免安装版：解压即用，数据落在解压目录的 .inkflow 下
-zip:
-  artifactName: ${productName}-${version}-win-x64.${ext}
 
 mac:
   target:

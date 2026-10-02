@@ -8,11 +8,34 @@
  * Renderer 也拿不到 Node 权限，只能通过 preload 暴露的白名单接口访问。
  */
 
+import { appendFileSync, mkdirSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, shell } from 'electron'
 
 import { BackendProcess, type BackendConnection } from './backend'
+
+/**
+ * 最早的启动标记。
+ *
+ * 刻意不依赖任何 Electron API —— 主进程若在 `whenReady` 之前就出问题，
+ * 这是唯一能留下的痕迹。写到可执行文件同级的 logs/ 下。
+ */
+function markBoot(stage: string): void {
+  try {
+    const dir = join(dirname(process.execPath), 'logs')
+    mkdirSync(dir, { recursive: true })
+    appendFileSync(
+      join(dir, 'boot.log'),
+      `${new Date().toISOString()} ${stage} pid=${process.pid}\n`,
+      'utf-8'
+    )
+  } catch {
+    // 写不进去就算了，不能因为它影响启动
+  }
+}
+
+markBoot('main-module-loaded')
 
 const backend = new BackendProcess()
 let mainWindow: BrowserWindow | null = null
@@ -158,6 +181,7 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(async () => {
+  markBoot('when-ready')
   registerIpc()
 
   // 后端启动失败不阻断窗口创建：界面会展示错误与重试入口，
@@ -169,7 +193,20 @@ app.whenReady().then(async () => {
     console.log(`[inkflow] 后端就绪 ${connection.baseUrl}`)
   } catch (error) {
     backendError = error instanceof Error ? error.message : String(error)
+    // GUI 程序看不到 stdout，把失败原因也写进日志文件
     console.error('[inkflow] 后端启动失败：', backendError)
+    try {
+      const { appendFileSync, mkdirSync } = await import('node:fs')
+      const dir = app.getPath('logs')
+      mkdirSync(dir, { recursive: true })
+      appendFileSync(
+        join(dir, 'main.log'),
+        `${new Date().toISOString()} 后端启动失败：${backendError}\n`,
+        'utf-8'
+      )
+    } catch {
+      // 日志写不进去不该影响启动流程
+    }
   }
 
   mainWindow = createWindow()

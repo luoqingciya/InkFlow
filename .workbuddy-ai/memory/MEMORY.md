@@ -54,6 +54,15 @@ CLI 与 Electron 桌面端都只是客户端，业务核心只有一份。
   需先 `npm install`）
 - 发版流程见 `docs/development/cicd.md`
 
+**本机环境陷阱（验证桌面端必看）**：
+
+- 环境**预设了 `ELECTRON_RUN_AS_NODE=1`**，会让 Electron 应用退化成 Node 运行
+  —— 进程在跑但什么都不做，且 Chromium 参数会报 `bad option`（Node 的错误格式）。
+  验证打包的桌面端必须先清掉：
+  `env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS ./InkFlow.exe`
+- `npx electron .` 在本机不可用（npm 的 allow-scripts 阻止了 Electron 的
+  postinstall，二进制没下载）
+
 **CI 上踩过的坑（改代码时留意）**：
 
 - GitHub Actions 的 **Windows runner 控制台是 cp1252**，脚本打印中文会
@@ -78,13 +87,6 @@ uv run python scripts/check.py  # 一键全检查
 cd desktop && npm run dev     # 桌面端（尚未实机验证）
 ```
 
-## 环境陷阱（本机特有）
-
-- **代理会劫持 127.0.0.1**：`curl` 要加 `--noproxy '*'`；
-  Python 测试要清 `http_proxy` 等环境变量，或设 `NO_PROXY=127.0.0.1,localhost`。
-- **`uv sync` 不带 `--all-packages` 不装成员包**（见上）。
-- **内存 SQLite 有每连接隔离问题**，测试用临时文件数据库。
-- **YAML 双引号里 `\S` 非法**，正则用单引号。
 
 ## 文档
 

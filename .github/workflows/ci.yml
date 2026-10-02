@@ -86,3 +86,12 @@ jobs:
       - name: 构建产物
         working-directory: desktop
         run: npm run build
+
+      - name: 校验打包配置
+        # electron-builder 的配置错误（比如写了 schema 里不存在的键）
+        # 只在真正打包时才报，而打包在 Release 里跑 —— 等发版才发现就太晚了。
+        # --dir 只生成目录不生成安装包，能校验配置且不下载 NSIS 等额外资源。
+        working-directory: desktop
+        run: npx electron-builder --dir --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"

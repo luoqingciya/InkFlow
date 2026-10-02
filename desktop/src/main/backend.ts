@@ -18,12 +18,45 @@
  */
 
 import { spawn, type ChildProcessByStdio } from 'node:child_process'
-import { accessSync, constants, existsSync, mkdirSync } from 'node:fs'
+import { accessSync, appendFileSync, constants, existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { Readable } from 'node:stream'
 
 import { app } from 'electron'
+
+/**
+ * 主进程日志。
+ *
+ * 打包后的 Electron 是 GUI 子系统程序，stdout 不接终端 ——
+ * `console.log` 写出去没人看得见。启动失败时用户唯一能提供的就是日志文件，
+ * 所以关键步骤都落到磁盘上。
+ */
+function logMain(message: string): void {
+  const line = `${new Date().toISOString()} ${message}\n`
+  console.log(message)
+  for (const dir of logDirs()) {
+    try {
+      mkdirSync(dir, { recursive: true })
+      appendFileSync(join(dir, 'main.log'), line, 'utf-8')
+      return
+    } catch {
+      // 换下一个候选目录
+    }
+  }
+}
+
+/** 日志候选目录。 */
+function logDirs(): string[] {
+  const dirs: string[] = []
+  try {
+    dirs.push(app.getPath('logs'))
+  } catch {
+    // app 尚未 ready 时 getPath 可能不可用
+  }
+  dirs.push(join(dirname(process.execPath), 'logs'))
+  return dirs
+}
 
 /**
  * stdio 配成 `['ignore', 'pipe', 'pipe']` 时 stdin 是 null，
@@ -111,14 +144,21 @@ function resolveDataHome(): string {
  * 更不一定有 uv。
  */
 function resolveLaunch(options: BackendStartOptions): LaunchSpec {
+  logMain(
+    `resolveLaunch: isPackaged=${app.isPackaged} resourcesPath=${process.resourcesPath}`
+  )
+
   if (app.isPackaged) {
     const name = process.platform === 'win32' ? 'inkflow-server.exe' : 'inkflow-server'
     const bundled = join(process.resourcesPath, 'backend', name)
+    logMain(`resolveLaunch: 查找内嵌后端 ${bundled}，存在=${existsSync(bundled)}`)
     if (!existsSync(bundled)) {
       throw new Error(`安装包缺少后端程序（${bundled}）。这是打包问题，请重新安装或反馈。`)
     }
-    // 安装目录通常只读，工作目录换成可写的用户数据目录
-    return { command: bundled, args: [], cwd: app.getPath('userData') }
+    // cwd 必须是一个**确定存在**的目录：spawn 的 cwd 不存在时会直接失败，
+    // 而且只触发 'error' 不触发 'exit'，等待就绪的那段代码会一直等到超时。
+    // 后端的数据目录由 INKFLOW_HOME 显式指定，与 cwd 无关。
+    return { command: bundled, args: [], cwd: dirname(bundled) }
   }
 
   const uv = UV_CANDIDATES.find(isExecutable)
@@ -263,15 +303,24 @@ export class BackendProcess {
         reject(new Error(`后端进程在就绪前退出（code=${code}）`))
       }
 
+      // spawn 失败（可执行文件缺失、cwd 不存在、无执行权限）只触发 'error'
+      // 不触发 'exit'。不监听的话会一直等到超时，白白让用户多等 40 秒。
+      const onError = (error: Error): void => {
+        cleanup()
+        reject(new Error(`后端进程启动失败：${error.message}`))
+      }
+
       const cleanup = (): void => {
         clearTimeout(timer)
         reader.off('line', onLine)
         child.off('exit', onExit)
+        child.off('error', onError)
         reader.close()
       }
 
       reader.on('line', onLine)
       child.once('exit', onExit)
+      child.once('error', onError)
     })
   }
 }

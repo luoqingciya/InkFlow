@@ -29,6 +29,10 @@ node_modules/
 desktop/out/
 desktop/dist/
 desktop/release/
+desktop/build-*/
+desktop/.asar-tmp/
+# electron-vite 运行时会生成带时间戳的配置副本
+desktop/electron.vite.config.*.mjs
 .electron-vite/
 *.tsbuildinfo
 

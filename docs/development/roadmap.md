@@ -66,7 +66,9 @@ M5 高级功能        ⬜ 未开始
 | 测试（108 项） | ✅ |
 | 文档（16 份） | ✅ |
 | CI（测试流水线） | ✅ Ubuntu + Windows 双平台 |
-| CD（打包 + 发版） | ✅ 三平台后端 + 三平台安装包，push tag 自动发布 |
+| CD（打包 + 发版） | ✅ 三平台后端 + CLI + 三平台安装包，push tag 自动发布 |
+| 数据目录便携化 | ✅ 默认落在运行目录下的 `.inkflow`（ADR-015） |
+| CLI 独立分发 | ✅ 单文件可执行程序，不依赖 Python 环境 |
 
 ### M1 待补
 
@@ -257,12 +259,46 @@ $ uv run python scripts/smoke_test_backend.py
 
 打包产物**真的能启动**，握手协议正常，版本号也一致。
 
+### 2026-10-02 · 便携化与 CLI 打包（v0.1.0-dev1）
+
+把两个打包产物拷到**独立目录**运行，验证数据目录确实落在运行目录下：
+
+```text
+$ ls .e2e-portable/
+inkflow-server.exe   inkflow.exe
+
+$ cd .e2e-portable && ./inkflow-server.exe --port 8899
+
+$ ls -la
+drwxr-xr-x  .inkflow          ← 数据目录就在运行目录下
+-rwxr-xr-x  inkflow-server.exe
+-rwxr-xr-x  inkflow.exe
+
+$ ./inkflow.exe -v health
+连接 http://127.0.0.1:8899（来源：握手文件
+  D:\...\.e2e-portable\.inkflow\server.json），已带 token
+| 状态 ok | 版本 0.1.0.dev1 |
+
+$ ./inkflow.exe info
+| 数据目录  D:\Project\InkFlow\.e2e-portable\.inkflow |
+
+$ ./inkflow.exe search 三体
+| 三体 | 刘慈欣 | Mock 书站 | 第三章 死神永生 |
+
+$ ./inkflow.exe download <book-id> --start 0 --end 5 --format epub
+任务 COMPLETED  进度 6/6 (100.0%)  失败 0
+输出 D:\Project\InkFlow\.e2e-portable\.inkflow\exports\三体.epub
+```
+
+产物大小：CLI 18.9 MB / 后端 28.2 MB。
+
 ### 尚未验证
 
 - 桌面端未实机运行（`npm install` + `npm run dev`）
 - Electron 打包产物未实机验证
 - WebSocket 进度推送只有手动验证，无自动化测试
 - 未对真实网站书源做兼容性验证
+- **桌面端的数据目录回退逻辑未实机验证**（只读安装位置的分支）
 
 ---
 
