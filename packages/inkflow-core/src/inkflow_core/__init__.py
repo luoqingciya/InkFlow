@@ -50,7 +50,8 @@ from inkflow_core.utils import (
     utcnow,
 )
 
-__version__ = "0.1.0"
+#: 全项目唯一的版本号来源。其余包通过 [tool.hatch.version] 从这里读取。
+__version__ = "0.1.0.dev0"
 
 __all__ = [
     "__version__",

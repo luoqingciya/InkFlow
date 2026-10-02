@@ -1,0 +1,60 @@
+appId: com.luoqingciya.inkflow
+productName: InkFlow
+copyright: Copyright © 2026 洛清辞
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+  - "!**/*.map"
+  - "!**/*.ts"
+
+extraResources:
+  # 打包进来的 Python 后端。桌面端用户因此不需要自己装 Python。
+  - from: resources/backend
+    to: backend
+    filter: ["**/*"]
+  - from: resources/icon.png
+    to: icon.png
+
+# Windows：安装版 + 免安装版双分发
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  icon: resources/icon.png
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: InkFlow
+  artifactName: ${productName}-${version}-setup.${ext}
+  deleteAppDataOnUninstall: false
+
+portable:
+  artifactName: ${productName}-${version}-portable.${ext}
+
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  category: public.app-category.utilities
+  icon: resources/icon.png
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Utility
+  icon: resources/icon.png
+  artifactName: ${productName}-${version}.${ext}

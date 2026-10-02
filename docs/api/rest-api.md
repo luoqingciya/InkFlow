@@ -62,14 +62,14 @@ token 由后端每次启动时生成，通过两种方式获得：
 免鉴权，供 Desktop 启动时做就绪探测。
 
 ```json
-{ "status": "ok", "version": "0.1.0", "uptime_seconds": 21.14 }
+{ "status": "ok", "version": "0.1.0.dev0", "uptime_seconds": 21.14 }
 ```
 
 ### `GET /api/v1/system/info`
 
 ```json
 {
-  "version": "0.1.0",
+  "version": "0.1.0.dev0",
   "data_dir": "C:\\Users\\you\\.inkflow",
   "uptime_seconds": 21.14,
   "source_count": 3,

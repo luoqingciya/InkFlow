@@ -1,6 +1,6 @@
 {
   "name": "inkflow-desktop",
-  "version": "0.1.0",
+  "version": "0.1.0-dev.0",
   "private": true,
   "description": "InkFlow 桌面端（Electron + Vue 3）",
   "author": "洛清辞",

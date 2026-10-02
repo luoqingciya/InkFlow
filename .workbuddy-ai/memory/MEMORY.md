@@ -19,6 +19,17 @@ CLI 与 Electron 桌面端都只是客户端，业务核心只有一份。
 | 骨架深度 | 可运行 MVP：L0/L1 真实现，L2 JS / L3 浏览器只留接口与文档 | 2026-10-02 |
 | Python 包管理 | uv workspace，6 个成员包 | 2026-10-02 |
 | 数据库 | SQLite（WAL 模式） | 2026-10-02 |
+| 版本号 | **PEP 440**，单一来源在 `inkflow_core.__version__`（当前 `0.1.0.dev0`） | 2026-10-02 |
+
+## 版本号（硬约束）
+
+**只在 `packages/inkflow-core/src/inkflow_core/__init__.py` 手写一次。**
+
+- 各成员包 pyproject：`dynamic = ["version"]` + `[tool.hatch.version] path = "../inkflow-core/src/inkflow_core/__init__.py"`
+- 各成员包 `__init__.py`：`from inkflow_core import __version__`
+- 桌面端用 semver 等价写法（`0.1.0.dev0` → `0.1.0-dev.0`）
+- 改完跑 `uv run python scripts/check_version.py`，CI 也会跑
+- 副作用：成员包不能脱离 workspace 单独 `pip install`
 
 ## 硬约束（改代码时必须守住）
 

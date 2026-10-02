@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------- 后端
+  backend:
+    name: 后端 · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: backend-windows
+            binary: inkflow-server.exe
+          - os: ubuntu-latest
+            artifact: backend-linux
+            binary: inkflow-server
+          - os: macos-latest
+            artifact: backend-macos
+            binary: inkflow-server
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: 同步依赖
+        run: uv sync --all-packages
+
+      - name: 打包为单文件可执行程序
+        run: uv run pyinstaller packaging/inkflow-server.spec --noconfirm
+
+      - name: 冒烟测试
+        # 打包产物跑不起来是这类流水线最常见的失败模式，
+        # 必须在发布前真的启动一次并请求 /health
+        run: uv run python scripts/smoke_test_backend.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.binary }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # ---------------------------------------------------------------- 桌面端
+  desktop:
+    name: 桌面端 · ${{ matrix.os }}
+    needs: backend
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            backend: backend-windows
+          - os: ubuntu-latest
+            backend: backend-linux
+          - os: macos-latest
+            backend: backend-macos
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: 取回对应平台的后端
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.backend }}
+          path: desktop/resources/backend
+
+      - name: 确认后端就位
+        run: ls -la desktop/resources/backend
+
+      - name: 安装依赖
+        working-directory: desktop
+        run: npm ci
+
+      - name: 构建
+        working-directory: desktop
+        run: npm run build
+
+      - name: 打包安装包
+        working-directory: desktop
+        run: npx electron-builder --publish never
+        env:
+          # 未配置代码签名证书时，跳过自动查找，避免 macOS 打包报错
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.dmg
+            desktop/release/*.AppImage
+          if-no-files-found: error
+          retention-days: 7
+
+  # ---------------------------------------------------------------- 发布
+  publish:
+    name: 发布到 GitHub Release
+    needs: desktop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 整理发布产物
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \
+            \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name 'inkflow-server*' \) \
+            -exec cp {} release-assets/ \;
+          echo "将发布以下文件："
+          ls -lh release-assets
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+          draft: false
+          fail_on_unmatched_files: false

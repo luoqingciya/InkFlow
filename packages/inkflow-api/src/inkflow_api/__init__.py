@@ -7,8 +7,9 @@
 from inkflow_api.app import create_app
 from inkflow_api.auth import TokenAuthMiddleware, generate_token
 from inkflow_api.state import AppState, build_state
+from inkflow_core import __version__
 
-__version__ = "0.1.0"
+# __version__ 由 inkflow-core 转发而来，全项目只有一处定义
 
 __all__ = [
     "AppState",

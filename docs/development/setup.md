@@ -131,6 +131,32 @@ uv run python scripts/check.py --fast   # 跳过 mypy
 
 ---
 
+## 版本号
+
+唯一来源是 `packages/inkflow-core/src/inkflow_core/__init__.py` 的 `__version__`，
+格式为 **PEP 440**（当前 `0.1.0.dev0`）。其余位置都是派生的：
+
+| 位置 | 方式 |
+|---|---|
+| 各成员包 `pyproject.toml` | `dynamic = ["version"]` + `[tool.hatch.version] path` 跨目录读取 |
+| 各成员包 `__init__.py` | `from inkflow_core import __version__` |
+| 根 `pyproject.toml` | 展示用（根是虚拟包），与来源保持一致 |
+| `desktop/package.json` | npm 生态用 semver，取等价写法（`0.1.0.dev0` → `0.1.0-dev.0`） |
+
+改版本号**只需改一处**，然后同步：
+
+```bash
+uv sync --all-packages
+uv run python scripts/check_version.py   # 校验一致性
+```
+
+CI 会跑同一个检查 —— 硬编码版本号或忘记同步会被直接拦下。
+
+> 副作用：成员包用了动态版本，**不能脱离 workspace 单独 `pip install`**
+> —— hatch 需要能读到 `../inkflow-core/`。本项目始终在 workspace 内构建。
+
+---
+
 ## 调试书源
 
 ```bash

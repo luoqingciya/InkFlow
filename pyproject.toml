@@ -1,6 +1,9 @@
 [project]
 name = "inkflow-workspace"
-version = "0.1.0"
+# 仅供展示：根项目是虚拟包（package = false），不参与构建。
+# 真正的版本号唯一来源是 packages/inkflow-core/src/inkflow_core/__init__.py，
+# 各成员包通过 [tool.hatch.version] 从那里读取。
+version = "0.1.0.dev0"
 description = "InkFlow —— API-First 小说资源聚合与下载平台（uv workspace 根）"
 readme = "README.md"
 requires-python = ">=3.12"

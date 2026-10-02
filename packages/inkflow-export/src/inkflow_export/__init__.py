@@ -5,6 +5,7 @@
 不依赖网络层，因此可以脱离 API 单独使用。
 """
 
+from inkflow_core import __version__
 from inkflow_export.base import (
     ExportChapter,
     Exporter,
@@ -18,7 +19,7 @@ from inkflow_export.epub import EpubExporter
 from inkflow_export.markdown import MarkdownExporter
 from inkflow_export.txt import TxtExporter
 
-__version__ = "0.1.0"
+# __version__ 由 inkflow-core 转发而来，全项目只有一处定义
 
 __all__ = [
     "__version__",

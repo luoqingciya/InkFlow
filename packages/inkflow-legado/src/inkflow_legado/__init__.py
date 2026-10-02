@@ -14,6 +14,7 @@ L2（JS 沙箱）与 L3（浏览器）尚未实现，遇到时抛出明确错误
 本包不复制 Legado 项目的任何源代码。
 """
 
+from inkflow_core import __version__
 from inkflow_legado.adapter import LegadoSourceAdapter, split_url_options
 from inkflow_legado.compiler import (
     LegadoRuleCompiler,
@@ -37,7 +38,7 @@ from inkflow_legado.schema import (
     LegadoTocRule,
 )
 
-__version__ = "0.1.0"
+# __version__ 由 inkflow-core 转发而来，全项目只有一处定义
 
 __all__ = [
     "__version__",

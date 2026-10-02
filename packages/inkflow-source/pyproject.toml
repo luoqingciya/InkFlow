@@ -1,6 +1,7 @@
 [project]
 name = "inkflow-source"
-version = "0.1.0"
+# 版本号从 inkflow-core 读取，全项目只有一处定义
+dynamic = ["version"]
 description = "InkFlow 书源引擎：适配器协议、注册表、HTTP 引擎与内容解析"
 requires-python = ">=3.12"
 dependencies = [
@@ -15,6 +16,9 @@ dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "../inkflow-core/src/inkflow_core/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/inkflow_source"]

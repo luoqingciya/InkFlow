@@ -7,8 +7,9 @@
 
 from inkflow_cli.client import ApiError, InkFlowClient
 from inkflow_cli.discovery import ServerLocation, discover
+from inkflow_core import __version__
 
-__version__ = "0.1.0"
+# __version__ 由 inkflow-core 转发而来，全项目只有一处定义
 
 __all__ = [
     "ApiError",

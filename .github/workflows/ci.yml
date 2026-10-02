@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支的旧运行直接取消 —— 推送频繁时没必要排队等旧提交跑完
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows 是主要分发目标，Linux 覆盖 CI 常见环境。
+        # 两个平台都跑，是为了提前发现路径分隔符、行尾、大小写敏感这类差异。
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: 同步依赖
+        # --all-packages 不能省：workspace 里 uv sync 默认只装根项目依赖
+        run: uv sync --all-packages
+
+      - name: 版本号一致性
+        # 版本号漂移不会让程序跑不起来，但会让发出去的包版本混乱 ——
+        # 靠人记不如靠检查
+        run: uv run python scripts/check_version.py
+
+      - name: 静态检查
+        run: uv run ruff check .
+
+      - name: 格式检查
+        run: uv run ruff format --check .
+
+      - name: 类型检查
+        run: uv run mypy .
+
+      - name: 测试
+        run: uv run pytest -q
+
+  desktop:
+    name: Desktop · 类型检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: 安装依赖
+        working-directory: desktop
+        run: npm ci
+
+      - name: 类型检查（主进程 / preload）
+        working-directory: desktop
+        run: npm run typecheck:node
+
+      - name: 类型检查（渲染进程）
+        working-directory: desktop
+        run: npm run typecheck:web
+
+      - name: 构建产物
+        working-directory: desktop
+        run: npm run build

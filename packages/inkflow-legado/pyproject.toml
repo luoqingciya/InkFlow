@@ -1,6 +1,7 @@
 [project]
 name = "inkflow-legado"
-version = "0.1.0"
+# 版本号从 inkflow-core 读取，全项目只有一处定义
+dynamic = ["version"]
 description = "InkFlow 的 Legado 书源兼容层：独立实现的格式解析与规则运行时"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,6 +13,9 @@ dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "../inkflow-core/src/inkflow_core/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/inkflow_legado"]

@@ -6,6 +6,7 @@
 并通过 ``SourceRegistry.register_factory`` 把工厂注入进来。
 """
 
+from inkflow_core import __version__
 from inkflow_source.adapter import BaseSourceAdapter, SourceAdapter
 from inkflow_source.aggregator import SearchAggregator, SourceOutcome, score_book
 from inkflow_source.http import DEFAULT_USER_AGENT, HttpCache, HttpClient, HttpResponse
@@ -29,7 +30,7 @@ from inkflow_source.registry import (
 )
 from inkflow_source.security import UrlBlockedError, check_url, check_url_sync
 
-__version__ = "0.1.0"
+# __version__ 由 inkflow-core 转发而来，全项目只有一处定义
 
 __all__ = [
     "__version__",

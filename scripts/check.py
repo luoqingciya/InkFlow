@@ -33,6 +33,7 @@ def main() -> int:
     args = parser.parse_args()
 
     checks: list[tuple[str, list[str]]] = [
+        ("版本号一致性", [sys.executable, "scripts/check_version.py"]),
         ("ruff check", ["ruff", "check", "."]),
         ("ruff format --check", ["ruff", "format", "--check", "."]),
     ]

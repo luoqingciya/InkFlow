@@ -246,6 +246,44 @@ INKFLOW_READY port=53421 token=xxxxx
 
 ---
 
+---
+
+## ADR-014 版本号单一来源，格式为 PEP 440
+
+**背景**
+项目有 6 个 Python 包加一个 Electron 应用。如果每个包各自写版本号，
+发版时要改 14 处（7 个 pyproject + 6 个 `__init__.py` + 1 个 package.json），
+漏改任何一处都会导致「包版本与实际代码不符」—— 这类问题不出事则已，
+出事时很难查（用户报的版本号与开发者以为的不一样）。
+
+**决策**
+
+唯一来源：`packages/inkflow-core/src/inkflow_core/__init__.py` 的 `__version__`。
+
+```text
+inkflow_core.__version__        ← 唯一手写的地方
+        │
+        ├── 各成员包 pyproject    [tool.hatch.version] path 跨目录读取
+        ├── 各成员包 __init__.py  from inkflow_core import __version__
+        ├── 根 pyproject          展示用，与来源保持一致
+        └── desktop/package.json  semver 等价写法
+```
+
+版本号格式用 **PEP 440**（如 `0.1.0.dev0`），因为它是 Python 打包工具链的规范。
+
+**后果**
+
+- 好处：发版只改一处；构建元数据与运行时 `__version__` 不可能不一致；
+  `scripts/check_version.py` 能在 CI 里拦住硬编码与漂移。
+- 代价：成员包的 pyproject 用 `dynamic = ["version"]`，
+  **不能直接 `pip install ./packages/inkflow-api`** —— 单包构建时
+  hatch 需要能读到 `../inkflow-core/`，脱离 workspace 会失败。
+  本项目始终在 workspace 内构建，可以接受。
+- 代价：桌面端是 npm 生态，必须用 semver。两种规范的映射写在
+  `scripts/check_version.py` 的 `to_semver()` 里（`.dev0` → `-dev.0`）。
+
+---
+
 ## 待定决策
 
 | 议题 | 说明 |

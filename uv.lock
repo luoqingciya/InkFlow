@@ -258,7 +258,6 @@ wheels = [
 
 [[package]]
 name = "inkflow-api"
-version = "0.1.0"
 source = { editable = "packages/inkflow-api" }
 dependencies = [
     { name = "fastapi" },
@@ -283,7 +282,6 @@ requires-dist = [
 
 [[package]]
 name = "inkflow-cli"
-version = "0.1.0"
 source = { editable = "packages/inkflow-cli" }
 dependencies = [
     { name = "httpx" },
@@ -304,7 +302,6 @@ requires-dist = [
 
 [[package]]
 name = "inkflow-core"
-version = "0.1.0"
 source = { editable = "packages/inkflow-core" }
 dependencies = [
     { name = "pydantic" },
@@ -321,7 +318,6 @@ requires-dist = [
 
 [[package]]
 name = "inkflow-export"
-version = "0.1.0"
 source = { editable = "packages/inkflow-export" }
 dependencies = [
     { name = "inkflow-core" },
@@ -332,7 +328,6 @@ requires-dist = [{ name = "inkflow-core", editable = "packages/inkflow-core" }]
 
 [[package]]
 name = "inkflow-legado"
-version = "0.1.0"
 source = { editable = "packages/inkflow-legado" }
 dependencies = [
     { name = "inkflow-core" },
@@ -349,7 +344,6 @@ requires-dist = [
 
 [[package]]
 name = "inkflow-source"
-version = "0.1.0"
 source = { editable = "packages/inkflow-source" }
 dependencies = [
     { name = "cssselect" },
@@ -372,7 +366,7 @@ requires-dist = [
 
 [[package]]
 name = "inkflow-workspace"
-version = "0.1.0"
+version = "0.1.0.dev0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
