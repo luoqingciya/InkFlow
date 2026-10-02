@@ -263,6 +263,9 @@ class InkFlowClient:
     async def get_task_items(self, task_id: str) -> dict[str, Any]:
         return await self.request("GET", f"/api/v1/tasks/{task_id}/items")
 
+    async def start_task(self, task_id: str) -> dict[str, Any]:
+        return await self.request("POST", f"/api/v1/tasks/{task_id}/start")
+
     async def pause_task(self, task_id: str) -> dict[str, Any]:
         return await self.request("POST", f"/api/v1/tasks/{task_id}/pause")
 

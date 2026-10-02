@@ -149,7 +149,10 @@ uv run inkflow book chapters <book-id>
 
 uv run inkflow download <book-id> --start 1 --end 100
 uv run inkflow task list
+uv run inkflow task start <task-id>
 uv run inkflow task pause <task-id>
+uv run inkflow task resume <task-id>
+uv run inkflow task cancel <task-id>
 
 uv run inkflow export <book-id> --format epub
 ```

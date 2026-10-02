@@ -18,6 +18,24 @@ ws://127.0.0.1:<port>/ws/tasks/{task_id}?token=<session_token>
 
 未通过鉴权时服务端以 `4401` 关闭连接；任务不存在时先发一条 `error` 事件再以 `4404` 关闭。
 
+### 不要漏掉开头的事件
+
+任务可能在 WebSocket 连接建立**之前**就跑完了 —— 那时所有进度事件都推给了
+空气，客户端只看到一个已经 `COMPLETED` 的快照。
+
+要接住完整事件流，用这个顺序：
+
+```text
+POST /api/v1/tasks          {auto_start: false}   → 建任务，停在 PENDING
+      ↓
+打开 WebSocket              收到 snapshot 初始化进度条
+      ↓
+POST /api/v1/tasks/{id}/start                     → 现在才开始跑
+```
+
+`start` 是幂等的，`auto_start=false` 的任务只能靠它启动
+（`resume` 只接受 `PAUSED` 状态）。
+
 ---
 
 ## 事件类型
@@ -27,7 +45,7 @@ ws://127.0.0.1:<port>/ws/tasks/{task_id}?token=<session_token>
 
 ### `snapshot`
 
-连接建立时的当前状态。
+连接建立时的当前状态。用「先连后启」的顺序时，这里会是 `PENDING`。
 
 ```json
 {
@@ -80,6 +98,23 @@ ws://127.0.0.1:<port>/ws/tasks/{task_id}?token=<session_token>
 ```json
 { "type": "progress", "completed": 3, "total": 6, "message": "跳过 3 个已下载章节" }
 ```
+
+失败章节按轮次重试前也会发一条 `progress`，同样带 `message`（HTTP 层与
+任务层都有重试，见 [rest-api.md 的「失败重试」](rest-api.md#失败重试)）：
+
+```json
+{
+  "type": "progress",
+  "completed": 4,
+  "failed": 2,
+  "total": 6,
+  "message": "2 个章节失败，1.0s 后重试（第 1/3 轮）"
+}
+```
+
+> `failed` 是**当前**的失败计数。某章在下一轮重试成功后会从计数里扣掉
+> —— 所以这个数字会**减少**，而 `completed` 只增不减。
+> 客户端不要把 `failed` 当作单调递增的量来做进度推算。
 
 ### `status`
 

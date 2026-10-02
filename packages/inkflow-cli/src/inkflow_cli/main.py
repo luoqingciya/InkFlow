@@ -45,7 +45,7 @@ app = typer.Typer(
     add_completion=False,
 )
 book_app = typer.Typer(help="书籍：详情、目录、正文", no_args_is_help=True)
-task_app = typer.Typer(help="下载任务：查看、暂停、恢复、取消", no_args_is_help=True)
+task_app = typer.Typer(help="下载任务：查看、启动、暂停、恢复、取消", no_args_is_help=True)
 sources_app = typer.Typer(help="书源：列表、导入、测试、删除", no_args_is_help=True)
 
 app.add_typer(book_app, name="book")
@@ -352,6 +352,21 @@ def task_watch(ctx: typer.Context, task_id: str = typer.Argument(...)) -> None:
             return None
 
     _run(ctx, run)
+
+
+@task_app.command("start")
+def task_start(ctx: typer.Context, task_id: str = typer.Argument(...)) -> None:
+    """启动一个尚未运行的任务。
+
+    幂等：任务已在运行时原样返回。终态任务会报 409。
+    """
+    cli_ctx: CliContext = ctx.obj
+
+    async def run() -> Any:
+        async with InkFlowClient(cli_ctx.location) as client:
+            return await client.start_task(task_id)
+
+    _emit(ctx, _run(ctx, run), print_task)
 
 
 @task_app.command("pause")

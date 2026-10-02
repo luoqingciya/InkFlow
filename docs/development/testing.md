@@ -12,7 +12,9 @@ tests/
 │
 ├── integration/     API 与适配器，走真实 HTTP（对 mock 站点）
 │   ├── test_api.py               路由、鉴权、错误格式、书源导入
-│   └── test_native_source.py     原生书源完整流程
+│   ├── test_native_source.py     原生书源完整流程
+│   ├── test_download.py          下载任务全链路（含重试 / 暂停 / 取消）
+│   └── test_websocket.py         进度推送（含真实 uvicorn 流式验证）
 │
 ├── source/          书源兼容性
 │   └── test_legado_compat.py     L0 / L1 / 等级边界
@@ -119,6 +121,43 @@ def test_import_native_source(client: TestClient, mock_site: str) -> None:
     assert response.status_code == 200
 ```
 
+### 下载任务测试
+
+`library` 夹具已经把「导入书源 → 搜索 → 抓目录」准备好：
+`.client` 是测试客户端，`.book_id` 是那本备好目录的书。
+
+```python
+def test_download(library: _Library) -> None:
+    task_id = library.client.post(
+        "/api/v1/tasks", json={"book_id": library.book_id, "output_format": "txt"}
+    ).json()["id"]
+    task = wait_for_terminal(library.client, task_id)
+    assert task["status"] == "COMPLETED"
+```
+
+**别用 `sleep`，用 `wait_for_terminal`。** 下载是异步的，`POST /tasks`
+返回时任务才刚 `PENDING`；拍脑袋睡一个时长，快了会假红、慢了会拖慢 CI。
+
+`library` 为什么必须带着 `book_id` 一起给：搜索会把 mock 站点的三本书
+（三体 / 三体 II / 三体 III）**全部**入库，而夹具只给「三体」抓了目录。
+**走 `/api/v1/books` 列表拿第一本是错的** —— 那按更新时间倒序，返回的是
+「三体 III」，它没有目录，建任务会直接 502。
+
+### 注入失败：`flaky` 夹具
+
+要测重试、失败隔离这类路径，用 `flaky` 让指定章节失败 N 次：
+
+```python
+def test_retry(library: _Library, flaky, state):
+    state.settings.download.retry_backoff = 0  # 测试里不等退避
+    adapter = flaky({"2": 1})  # /chapter/2 失败一次
+
+    task_id = ...  # 建任务、等终态
+    assert adapter.calls.count("2") == 2  # 一次失败 + 一次重试
+```
+
+键是章节 URL 的**尾段数字**（mock 站点是 1-based 的 `/chapter/1`…`/chapter/6`）。
+
 ### 异步测试
 
 `asyncio_mode = "auto"`，直接写 `async def` 即可：
@@ -128,6 +167,26 @@ async def test_search(adapter) -> None:
     results = await adapter.search("三体")
     assert len(results) == 3
 ```
+
+### WebSocket 测试：两套驱动方式
+
+**这是本项目最容易踩的一个坑。** `TestClient` 看起来最方便，但它每个
+HTTP 请求都会新起一个 anyio portal（一个全新的事件循环），请求返回后
+循环即销毁；WebSocket 会话也跑在自己的 portal 里。于是
+「用 REST 启动任务、再用 WebSocket 收进度」这种真实用法在 `TestClient`
+下**永远收不到事件** —— 下载协程和 WS 不在同一个循环里，测试会挂死。
+
+所以 `test_websocket.py` 里分成两组：
+
+| 场景 | 驱动方式 |
+|---|---|
+| 快照形状、鉴权、任务不存在、连接关闭、Broker 语义 | `TestClient`（便宜） |
+| 真的收到 progress / completed / status 的流式用例 | `live_server` 夹具：后台线程跑真实 uvicorn + `websockets` 客户端 |
+
+`live_server` 让 REST 与 WebSocket 共享同一事件循环，这才是线上跑的样子。
+
+另外注意：**WebSocket 鉴权失败发生在握手阶段**，`websocket_connect`
+本身就抛 `WebSocketDisconnect(code=4401)`，不是进去之后再收一条错误消息。
 
 ### 书源定义共享
 
@@ -149,6 +208,23 @@ API 测试与兼容性测试共用同一份 —— 否则两处会各自漂移�
 | 随机的 `no such table` | 用了 `:memory:` 数据库 |
 | 连接超时但服务正常 | 代理环境变量劫持了 `127.0.0.1` |
 | 断言「原始数据里还有广告」失败 | 广告节点可能在正文容器**外面**，压根不在 `raw` 里 |
+| WebSocket 测试挂死 | 用 `TestClient` 想收流式事件 —— REST 与 WS 不在同一事件循环（见上方「两套驱动方式」） |
+| `zipfile.BadZipFile` 偶发 | 导出在 `asyncio.to_thread` 里跑，DB 里的 `output_path` 可能早于字节落盘。用 `_open_zip_when_ready` 轮询 |
+| 拿到没有目录的书 | `library` 夹具别用 `/api/v1/books` 第一本，搜索会入库 3 本 |
+| 全量 `pytest` 偶发 exit 1，但**没有 `F`**、也没有 summary | pytest teardown 删 `%TEMP%\pytest-of-*\garbage-*` 时被环境的批量删除保护拦下。**测试是全绿的** |
+| `--basetemp=` 指向**项目目录内** → 稳定 `151 errors` | 守门器把 basetemp 下的 `…current` 符号链接解析成整个工作区，报「上千个文件」直接 `SystemExit(1)`，连 fixture setup 都进不去 |
+
+> 这两条值得单独说：**退出码不一定来自测试失败。**
+> 遇到「偶发红、单独跑却全过」时，先确认 stdout 里到底有没有 `F` ——
+> 没有 `F` 就该去查退出码的其他来源，而不是反复重跑碰运气。
+>
+> 本机跑全量的稳妥方式是把临时目录放在**工作区之外**：
+>
+> ```bash
+> uv run pytest -p no:cacheprovider --basetemp="$TEMP/inkflow_pt_$RANDOM"
+> ```
+>
+> （`--basetemp` 千万别指向仓库内目录，会触发上表中的第二条。）
 
 ---
 
@@ -156,14 +232,28 @@ API 测试与兼容性测试共用同一份 —— 否则两处会各自漂移�
 
 ```bash
 uv run pytest -q
-# 108 passed
+# 157 passed
 ```
 
 | 层 | 数量 | 覆盖内容 |
 |---|---|---|
-| unit | 72 | 模型与状态机、归一化、正文清洗、规则编译（含各类语法分支）、三种导出器、EPUB 结构合法性 |
-| integration | 25 | 全部路由、鉴权、错误结构、书源导入幂等、SSRF 拦截、原生书源完整流程 |
-| source | 11 | Legado L0/L1、等级判定、JS 规则报错、规则失效报错、AST 调试接口 |
+| unit | 64 | 模型与状态机、归一化、正文清洗、规则编译（含各类语法分支）、三种导出器、EPUB 结构合法性 |
+| integration | 80 | 全部路由、鉴权、错误结构、书源导入幂等、SSRF 拦截、原生书源完整流程、**下载任务全链路**、**WebSocket 进度推送** |
+| source | 13 | Legado L0/L1、等级判定、JS 规则报错、规则失效报错、AST 调试接口 |
+
+按文件看：
+
+| 文件 | 数量 |
+|---|---|
+| `unit/test_legado_compiler.py` | 22 |
+| `unit/test_export.py` | 17 |
+| `unit/test_models.py` | 15 |
+| `unit/test_normalizer.py` | 10 |
+| `integration/test_download.py` | 33 |
+| `integration/test_api.py` | 19 |
+| `integration/test_websocket.py` | 16 |
+| `source/test_legado_compat.py` | 13 |
+| `integration/test_native_source.py` | 12 |
 
 ---
 
@@ -173,11 +263,9 @@ uv run pytest -q
 
 | 缺口 | 说明 |
 |---|---|
-| 下载任务的端到端测试 | 目前靠手动 E2E 验证（见 [roadmap.md](roadmap.md) 的验收记录），缺自动化 |
-| WebSocket 进度推送 | 未写自动化测试，只做了手动验证 |
-| 暂停 / 恢复 / 取消 | 状态机有单测，调度层没有 |
 | 桌面端 | 无前端测试（`vue-tsc` 类型检查是唯一的静态保障） |
 | 缓存层 | `HttpCache` 协议尚无默认实现，因此无测试 |
+| 日志落盘 | 尚未实现，因此无测试 |
 | 真实书源样本 | 只有 mock 站点，兼容性评分尚未建立 |
 
 ---
