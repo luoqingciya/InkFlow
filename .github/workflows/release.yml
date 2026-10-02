@@ -127,11 +127,21 @@ jobs:
           path: artifacts
 
       - name: 整理发布产物
+        shell: bash
         run: |
           mkdir -p release-assets
+
+          # 后端必须按平台重命名：Linux 与 macOS 的产物都叫 inkflow-server，
+          # 直接 cp 到同一目录会互相覆盖，最后只剩一个
+          cp artifacts/backend-windows/inkflow-server.exe release-assets/inkflow-server-windows-x64.exe
+          cp artifacts/backend-linux/inkflow-server        release-assets/inkflow-server-linux-x64
+          cp artifacts/backend-macos/inkflow-server        release-assets/inkflow-server-macos
+
+          # 桌面端安装包（InkFlow-*.exe 排除了后端的 inkflow-server.exe）
           find artifacts -type f \
-            \( -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name 'inkflow-server*' \) \
+            \( -name '*.dmg' -o -name '*.AppImage' -o -name 'InkFlow-*.exe' \) \
             -exec cp {} release-assets/ \;
+
           echo "将发布以下文件："
           ls -lh release-assets
 

@@ -86,6 +86,12 @@ macOS 上只能产出 Mach-O。所以必须在三个平台各跑一次。
 汇总所有 artifact，用 `softprops/action-gh-release` 创建 Release，
 `generate_release_notes: true` 自动生成变更日志。
 
+**后端产物会按平台重命名**（`inkflow-server-linux-x64` / `inkflow-server-macos` /
+`inkflow-server-windows-x64.exe`）—— Linux 与 macOS 的 PyInstaller 产物同名，
+直接汇总到同一目录会互相覆盖，最后只剩一个。
+
+含 `-` 的 tag（如 `v0.1.0-dev.0`）会标记为 **prerelease**，不占用 Latest 标记。
+
 ---
 
 ## 本地复现
