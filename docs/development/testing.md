@@ -14,6 +14,7 @@ tests/
 │   ├── test_api.py               路由、鉴权、错误格式、书源导入
 │   ├── test_native_source.py     原生书源完整流程
 │   ├── test_download.py          下载任务全链路（含重试 / 暂停 / 取消）
+│   ├── test_cache.py             HTTP 缓存（存取 / 过期 / LRU 淘汰 / 只缓存 GET）
 │   └── test_websocket.py         进度推送（含真实 uvicorn 流式验证）
 │
 ├── source/          书源兼容性
@@ -188,6 +189,32 @@ HTTP 请求都会新起一个 anyio portal（一个全新的事件循环），�
 另外注意：**WebSocket 鉴权失败发生在握手阶段**，`websocket_connect`
 本身就抛 `WebSocketDisconnect(code=4401)`，不是进去之后再收一条错误消息。
 
+### 缓存测试：怎么证明「真的省掉了一次请求」
+
+`test_cache.py` 里最容易写虚的一条是「命中缓存」。只断言
+`from_cache is True` 是不够的 —— 那个标志是我们在
+`SqliteHttpCache.get()` 里自己设的，设错了测试照样绿。
+
+有说服力的做法是**把 mock 站点关掉之后再取一次**：
+
+```python
+first = await client.get(f"{site.url}/book/1")
+site.stop()  # 站点下线
+second = await client.get(f"{site.url}/book/1")
+assert second.from_cache is True
+```
+
+缓存没生效的话，第二次会因连接失败抛 `SourceError`，测试立刻红。
+
+几条容易踩的边界：
+
+- **`ttl=0` 是「立即过期」，不是「永不过期」。** 写 `if ttl:` 会把 0
+  也判成假值，于是落进「不过期」分支。要显式区分 `None` 与 `0`。
+- **`ttl=None` 才是永不过期**，两者语义不同。
+- **LRU 的排序键是 `coalesce(hit_at, created_at)`** —— 从未命中的条目
+  按写入时间排，所以测淘汰顺序时要控制时间。测试里用 `monkeypatch`
+  替换 `inkflow_api.services.cache.utcnow`，比 `sleep` 可靠且快。
+
 ### 书源定义共享
 
 测试书源定义放在 [`tests/sources_data.py`](../../tests/sources_data.py)，
@@ -232,13 +259,13 @@ API 测试与兼容性测试共用同一份 —— 否则两处会各自漂移�
 
 ```bash
 uv run pytest -q
-# 157 passed
+# 189 passed
 ```
 
 | 层 | 数量 | 覆盖内容 |
 |---|---|---|
 | unit | 64 | 模型与状态机、归一化、正文清洗、规则编译（含各类语法分支）、三种导出器、EPUB 结构合法性 |
-| integration | 80 | 全部路由、鉴权、错误结构、书源导入幂等、SSRF 拦截、原生书源完整流程、**下载任务全链路**、**WebSocket 进度推送** |
+| integration | 112 | 全部路由、鉴权、错误结构、书源导入幂等、SSRF 拦截、原生书源完整流程、**下载任务全链路**、**HTTP 缓存**、**WebSocket 进度推送** |
 | source | 13 | Legado L0/L1、等级判定、JS 规则报错、规则失效报错、AST 调试接口 |
 
 按文件看：
@@ -250,6 +277,7 @@ uv run pytest -q
 | `unit/test_models.py` | 15 |
 | `unit/test_normalizer.py` | 10 |
 | `integration/test_download.py` | 33 |
+| `integration/test_cache.py` | 32 |
 | `integration/test_api.py` | 19 |
 | `integration/test_websocket.py` | 16 |
 | `source/test_legado_compat.py` | 13 |
@@ -264,9 +292,9 @@ uv run pytest -q
 | 缺口 | 说明 |
 |---|---|
 | 桌面端 | 无前端测试（`vue-tsc` 类型检查是唯一的静态保障） |
-| 缓存层 | `HttpCache` 协议尚无默认实现，因此无测试 |
 | 日志落盘 | 尚未实现，因此无测试 |
 | 真实书源样本 | 只有 mock 站点，兼容性评分尚未建立 |
+| 缓存的长期运行 | 容量淘汰只在测试里验证过，未在真实使用中跑过 |
 
 ---
 

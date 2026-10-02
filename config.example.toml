@@ -34,7 +34,7 @@ filename_template = "{name} - {author}"
 enabled = true
 # 体积上限，支持 KB / MB / GB 后缀。超出后按 LRU 淘汰。
 max_size = "2GB"
-# HTTP 响应缓存 TTL（秒）。0 表示不缓存 HTTP 层，只缓存章节正文。
+# HTTP 响应缓存 TTL（秒）。0 表示关闭 HTTP 层缓存。
 http_ttl = 3600
 
 [source]

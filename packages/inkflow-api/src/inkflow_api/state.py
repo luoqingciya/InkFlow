@@ -11,14 +11,14 @@ from dataclasses import dataclass, field
 from time import monotonic
 
 from inkflow_api.auth import generate_token
-from inkflow_api.services import DownloadTaskManager, LibraryService
+from inkflow_api.services import DownloadTaskManager, LibraryService, SqliteHttpCache
 from inkflow_core.config import Settings, get_settings
 from inkflow_core.models import BookSource
 from inkflow_core.paths import InkFlowPaths, get_paths
 from inkflow_core.storage import Database
 from inkflow_export import available_formats
 from inkflow_source import SearchAggregator, SourceLoader, SourceRegistry
-from inkflow_source.http import HttpClient
+from inkflow_source.http import HttpCache, HttpClient
 from inkflow_source.loader import default_loader
 from inkflow_source.registration import register_native
 from inkflow_source.registry import HttpFactory, default_registry
@@ -33,6 +33,7 @@ class AppState:
     settings: Settings
     paths: InkFlowPaths
     db: Database
+    cache: SqliteHttpCache | None
     registry: SourceRegistry
     loader: SourceLoader
     aggregator: SearchAggregator
@@ -44,6 +45,18 @@ class AppState:
     @property
     def uptime_seconds(self) -> float:
         return monotonic() - self.started_at
+
+    def cache_info(self) -> dict[str, object]:
+        """HTTP 缓存概况。未启用时返回零值，字段形状保持一致。"""
+        if self.cache is None:
+            return {
+                "enabled": False,
+                "entries": 0,
+                "size_bytes": 0,
+                "expired_entries": 0,
+                "max_size_bytes": None,
+            }
+        return {"enabled": True, **self.cache.stats()}
 
     def system_info(self) -> dict[str, object]:
         """运行概况，供 ``/api/v1/system/info`` 使用。"""
@@ -64,6 +77,7 @@ class AppState:
             "source_formats": [str(f) for f in self.loader.supported_formats()],
             "python_version": sys.version.split()[0],
             "platform": platform.platform(),
+            "cache": self.cache_info(),
         }
 
     async def shutdown(self) -> None:
@@ -106,7 +120,8 @@ def build_state(
     # 注册内置书源类型（Legado 兼容层在此接入，Source 层本身不认识它）
     _register_source_types(resolved_registry, resolved_loader)
     # 让全局请求配置（超时、并发上限、内网访问开关）作用到每个书源
-    resolved_registry.set_http_factory(_make_http_factory(resolved_settings))
+    cache = _build_cache(resolved_settings, db)
+    resolved_registry.set_http_factory(_make_http_factory(resolved_settings, cache))
 
     library = LibraryService(db)
     tasks = DownloadTaskManager(
@@ -120,6 +135,7 @@ def build_state(
         settings=resolved_settings,
         paths=resolved_paths,
         db=db,
+        cache=cache,
         registry=resolved_registry,
         loader=resolved_loader,
         aggregator=SearchAggregator(
@@ -131,7 +147,23 @@ def build_state(
     )
 
 
-def _make_http_factory(settings: Settings) -> HttpFactory:
+def _build_cache(settings: Settings, db: Database) -> SqliteHttpCache | None:
+    """按配置构造 HTTP 缓存。
+
+    TTL 为 0 等同于不缓存 —— 写进去立刻过期，只会白白占空间，
+    不如直接不建这个对象。
+    """
+    config = settings.cache
+    if not config.enabled or config.http_ttl <= 0:
+        return None
+    return SqliteHttpCache(
+        db,
+        max_size_bytes=config.max_size_bytes,
+        default_ttl=config.http_ttl,
+    )
+
+
+def _make_http_factory(settings: Settings, cache: HttpCache | None) -> HttpFactory:
     """构造 HTTP 客户端工厂。
 
     书源自己不带全局约束，只有在这里把 ``source`` 段配置注入进去，
@@ -144,6 +176,7 @@ def _make_http_factory(settings: Settings) -> HttpFactory:
             allow_private_network=settings.source.allow_private_network,
             global_concurrency=settings.source.global_concurrency,
             domain_concurrency=settings.source.domain_concurrency,
+            cache=cache,
         )
 
     return factory

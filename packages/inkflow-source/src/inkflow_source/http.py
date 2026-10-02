@@ -229,9 +229,12 @@ class HttpClient:
         """
         await check_url(url, allow_private_network=self.allow_private_network)
 
+        # 只缓存 GET：POST 之类有副作用，复用旧响应会得到错误结果
+        cache = self.cache if (use_cache and method.upper() == "GET") else None
         cache_key = self._cache_key(method, url, params)
-        if use_cache and self.cache is not None:
-            cached = await self.cache.get(cache_key)
+
+        if cache is not None:
+            cached = await cache.get(cache_key)
             if cached is not None:
                 return cached
 
@@ -289,8 +292,8 @@ class HttpClient:
                 elapsed=elapsed,
             )
 
-            if use_cache and self.cache is not None and result.ok:
-                await self.cache.set(cache_key, result, ttl=self.cache_ttl)
+            if cache is not None and result.ok:
+                await cache.set(cache_key, result, ttl=self.cache_ttl)
 
             return result
 
