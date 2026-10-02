@@ -46,6 +46,7 @@ token 由后端每次启动时生成，通过两种方式获得：
 | GET | `/api/v1/tasks` | 任务列表 |
 | GET | `/api/v1/tasks/{task_id}` | 任务详情 |
 | GET | `/api/v1/tasks/{task_id}/items` | 任务章节明细 |
+| POST | `/api/v1/tasks/{task_id}/start` | 启动（配合 `auto_start=false`） |
 | POST | `/api/v1/tasks/{task_id}/pause` | 暂停 |
 | POST | `/api/v1/tasks/{task_id}/resume` | 恢复 |
 | POST | `/api/v1/tasks/{task_id}/cancel` | 取消 |
@@ -356,15 +357,30 @@ token 由后端每次启动时生成，通过两种方式获得：
 }
 ```
 
-### `POST /api/v1/tasks/{task_id}/pause|resume|cancel`
+### `POST /api/v1/tasks/{task_id}/start|pause|resume|cancel`
 
 均返回更新后的 `DownloadTask`。
 
+- **start**：启动一个尚未运行的任务。配合创建时的 `auto_start=false` 使用 ——
+  先建任务让客户端接上 WebSocket，再启动，否则任务可能在连接建立前就跑完，
+  进度事件全丢。**幂等**：任务已在运行时原样返回。
 - **pause**：已在途的章节跑完，不再开始新章节。已下载内容全部保留。
 - **resume**：跳过已下载章节继续。
-- **cancel**：停止任务，已下载内容保留。
+- **cancel**：停止任务，已下载内容保留。终态一旦定下不会反转。
 
-对状态不匹配的任务调用会返回 `409` + `TASK_INVALID_STATE`。
+对状态不匹配的任务调用会返回 `409` + `TASK_INVALID_STATE`
+（`start` / `pause` / `resume` 均如此）。
+
+### 失败重试
+
+单章失败**不会中断任务**：计入 `failed` 并记录到明细表，其余章节照常下载。
+
+失败章节会按轮次重试，轮数由 `download.retry` 决定（默认 3），
+轮间等待 `retry_backoff * 2^n`。重试前会通过 WebSocket 推一条
+带 `「N 个章节失败，Xs 后重试」` 的 progress 事件；重试成功后
+该章的 `error` 被清空，`attempts` 保留真实累计次数。
+
+因此 `failed` 的准确含义是「**重试额度用尽后仍失败**」。
 
 ---
 

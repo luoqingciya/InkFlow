@@ -24,6 +24,10 @@ env/
 htmlcov/
 coverage.xml
 
+# pytest 的 --basetemp 落地目录（本机跑测试时会临时用到）
+.pt_*/
+.pytest_tmp*/
+
 # ---------------------------------------------------------------- Node / Electron
 node_modules/
 desktop/out/

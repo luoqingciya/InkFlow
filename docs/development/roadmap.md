@@ -41,8 +41,8 @@ M5 高级功能        ⬜ 未开始
 7.  选择章节区间                     ✅
 8.  创建下载任务                     ✅
 9.  并发下载                         ✅
-10. 显示实时进度                     ✅（WebSocket，手动验证）
-11. 失败章节自动重试                 🟡（HTTP 层有重试；任务层重试待补）
+10. 显示实时进度                     ✅（WebSocket，已有自动化测试）
+11. 失败章节自动重试                 ✅（HTTP 层 + 任务层双重重试）
 12. 下载完成                         ✅
 13. 生成 TXT                         ✅
 14. 生成 EPUB                        ✅
@@ -59,12 +59,13 @@ M5 高级功能        ⬜ 未开始
 | 目录抓取（含分页） | ✅ |
 | 正文抓取与清洗（含分页） | ✅ 保留 raw + clean |
 | 下载任务（并发 / 暂停 / 恢复 / 取消 / 跳过已下载） | ✅ |
+| 任务层失败重试 | ✅ 按轮次重试，退避可配（ADR-016） |
 | 导出（TXT / EPUB / Markdown） | ✅ EPUB 手写，结构已校验 |
 | REST API + WebSocket | ✅ |
 | CLI（全部命令 + `--json`） | ✅ |
-| Electron 骨架（窗口 / 托盘 / 后端管理 / IPC 白名单） | ✅ 代码完成，**未实机运行验证** |
-| 测试（108 项） | ✅ |
-| 文档（16 份） | ✅ |
+| Electron 骨架（窗口 / 托盘 / 后端管理 / IPC 白名单） | ✅ 已实机验证 |
+| 测试（157 项） | ✅ 含下载链路与 WebSocket 自动化 |
+| 文档（17 份） | ✅ |
 | CI（测试流水线） | ✅ Ubuntu + Windows 双平台 |
 | CD（打包 + 发版） | ✅ 三平台后端 + CLI + 三平台安装包，push tag 自动发布 |
 | 数据目录便携化 | ✅ 默认落在运行目录下的 `.inkflow`（ADR-015） |
@@ -74,12 +75,11 @@ M5 高级功能        ⬜ 未开始
 
 | 事项 | 说明 | 优先级 |
 |---|---|---|
-| 下载任务自动化测试 | 目前只有手动 E2E，缺 CI 保障 | 高 |
-| 任务层重试 | HTTP 层已重试，但单章失败后不会重新入队 | 高 |
 | 缓存层落地 | `cache` 表已建，`HttpCache` 协议无默认实现 | 中 |
 | 日志落盘 | 配置项已定义（轮转 / JSON Lines），实现待补 | 中 |
-| 桌面端实机验证 | 需 `npm install` 后跑 `npm run dev`；打包产物同样未实机验证 | 高 |
 | 代码签名 | Windows SmartScreen 与 macOS Gatekeeper 会告警 | 中 |
+| macOS / Linux 打包产物实机验证 | 流水线会产出，但未在真机跑过 | 中 |
+| 桌面端只读安装位置的回退分支 | `~/.inkflow` 兜底路径未实机验证 | 低 |
 | 封面下载 | `cover_url` 已抓取，未下载图片并写入 EPUB | 低 |
 | 资源下载器 | 正文内嵌图片（`ContentResult.images` 已收集，未下载） | 低 |
 
@@ -292,13 +292,51 @@ $ ./inkflow.exe download <book-id> --start 0 --end 5 --format epub
 
 产物大小：CLI 18.9 MB / 后端 28.2 MB。
 
+### 2026-10-02 · 下载链路与 WebSocket 测试补齐
+
+M1 待补清单里两个「高」优先级项落地：
+
+```text
+$ uv run pytest -q
+157 passed
+
+$ uv run ruff check .
+All checks passed!
+
+$ uv run mypy .
+Success: no issues found in 87 source files
+```
+
+> 本机复现测试时，若全量 `pytest` 报 exit 1 却看不到任何 `F`，
+> 是环境的批量删除保护拦下了 pytest 的临时目录清理，**不是测试失败**。
+> 稳妥跑法见 [testing.md](testing.md) 的「踩过的坑」。
+
+新增两个集成测试文件，共 49 项：
+
+| 文件 | 数量 | 覆盖 |
+|---|---|---|
+| `tests/integration/test_download.py` | 33 | 任务创建与区间裁剪、并发下载、正文入库、EPUB 结构合法性、逐章明细、跳过已下载、失败隔离、按轮次重试、暂停/恢复/取消、`/start` 端点 |
+| `tests/integration/test_websocket.py` | 16 | snapshot 首帧与字段形状、事件流、终态关闭、4404/4401、Broker 语义、多订阅者 |
+
+过程中的两个发现：
+
+1. **API 缺口**：`auto_start=false` 建出的任务**没有任何端点能启动它**
+   —— `resume` 只接受 `PAUSED`。补了 `POST /api/v1/tasks/{id}/start`
+   与对应的 CLI 命令 `inkflow task start`。
+2. **TestClient 收不到 WebSocket 流式事件**：它每个 HTTP 请求都新起一个
+   anyio portal，请求返回后循环即销毁；WS 会话又在自己那个循环里。
+   于是「REST 启动任务 → WS 收进度」这种真实用法在 TestClient 下**必然挂死**。
+   改为后台线程跑真实 uvicorn + `websockets` 客户端才验证得动，
+   细节记进了 [testing.md](testing.md)。
+
+任务层重试的设计取舍见 [ADR-016](../architecture/decisions.md)。
+
 ### 尚未验证
 
-- 桌面端未实机运行（`npm install` + `npm run dev`）
-- Electron 打包产物未实机验证
-- WebSocket 进度推送只有手动验证，无自动化测试
+- Electron 打包产物在 macOS / Linux 上未实机验证（Windows 已验）
+- 桌面端只读安装位置（回退到 `~/.inkflow`）的分支未实机验证
 - 未对真实网站书源做兼容性验证
-- **桌面端的数据目录回退逻辑未实机验证**（只读安装位置的分支）
+- 缓存层与日志落盘尚未实现，因此无测试
 
 ---
 
