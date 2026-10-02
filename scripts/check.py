@@ -9,9 +9,15 @@ CI 与本地用同一个入口，避免「本地过了 CI 挂」这类口径不�
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+# Windows 控制台默认可能是 cp936 / cp1252，直接打印中文会 UnicodeEncodeError
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -40,6 +46,12 @@ def main() -> int:
     if not args.fast:
         checks.append(("mypy", ["mypy", "."]))
     checks.append(("pytest", ["pytest", "-q"]))
+
+    # 前端类型检查。没装 node_modules 就跳过 —— 纯后端开发不该被它挡住，
+    # 但装了就一定要跑：TS 的错误只有 tsc 能发现，Python 侧检查覆盖不到。
+    npm = shutil.which("npm")
+    if npm and (ROOT / "desktop" / "node_modules").is_dir():
+        checks.append(("desktop typecheck", [npm, "--prefix", "desktop", "run", "typecheck"]))
 
     failed: list[str] = []
     for label, command in checks:

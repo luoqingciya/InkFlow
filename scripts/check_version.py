@@ -20,6 +20,12 @@ from pathlib import Path
 
 from packaging.version import InvalidVersion, Version
 
+# Windows 控制台默认可能是 cp936 / cp1252，直接打印中文会 UnicodeEncodeError。
+# CI 上设了 PYTHONUTF8，但脚本要能独立运行，所以这里再兜一道。
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parent.parent
 CORE_INIT = ROOT / "packages" / "inkflow-core" / "src" / "inkflow_core" / "__init__.py"
 ROOT_PYPROJECT = ROOT / "pyproject.toml"

@@ -15,6 +15,8 @@
 
 **我在做安全 / 发布审查** → [development/security.md](development/security.md) → [development/licensing.md](development/licensing.md)
 
+**我要发一个版本** → [development/cicd.md](development/cicd.md) → [development/setup.md](development/setup.md)
+
 ---
 
 ## 目录
@@ -47,8 +49,9 @@
 
 | 文档 | 内容 |
 |---|---|
-| [setup.md](development/setup.md) | 环境搭建、常用命令、排障 |
+| [setup.md](development/setup.md) | 环境搭建、常用命令、版本号约定、排障 |
 | [testing.md](development/testing.md) | 测试分层、mock 站点、如何写测试 |
+| [cicd.md](development/cicd.md) | GitHub Actions 流水线、本地复现、发版步骤 |
 | [roadmap.md](development/roadmap.md) | 里程碑划分与当前进度 |
 | [security.md](development/security.md) | 威胁模型与防护措施 |
 | [licensing.md](development/licensing.md) | 许可证选择、与 Legado 的关系、内容边界 |

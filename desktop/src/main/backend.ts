@@ -17,12 +17,20 @@
  * 端口默认由系统分配（配置里 port = 0），所以只能这样拿实际端口。
  */
 
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn, type ChildProcessByStdio } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
+import type { Readable } from 'node:stream'
 
 import { app } from 'electron'
+
+/**
+ * stdio 配成 `['ignore', 'pipe', 'pipe']` 时 stdin 是 null，
+ * 因此类型是 `ChildProcessByStdio<null, Readable, Readable>`，
+ * 而不是 `ChildProcessWithoutNullStreams`（后者要求 stdin 可写）。
+ */
+type BackendChild = ChildProcessByStdio<null, Readable, Readable>
 
 export interface BackendConnection {
   baseUrl: string
@@ -92,7 +100,7 @@ function resolveLaunch(options: BackendStartOptions): LaunchSpec {
 }
 
 export class BackendProcess {
-  private child: ChildProcessWithoutNullStreams | null = null
+  private child: BackendChild | null = null
   private connection: BackendConnection | null = null
   private stopping = false
 
@@ -130,7 +138,7 @@ export class BackendProcess {
         no_proxy: '127.0.0.1,localhost'
       },
       stdio: ['ignore', 'pipe', 'pipe']
-    }) as ChildProcessWithoutNullStreams
+    })
 
     // spawn 失败（可执行文件不存在、无执行权限）会触发 'error'。
     // 不监听的话 Node 会抛未捕获异常，直接带走整个主进程。

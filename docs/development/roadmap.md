@@ -64,7 +64,9 @@ M5 高级功能        ⬜ 未开始
 | CLI（全部命令 + `--json`） | ✅ |
 | Electron 骨架（窗口 / 托盘 / 后端管理 / IPC 白名单） | ✅ 代码完成，**未实机运行验证** |
 | 测试（108 项） | ✅ |
-| 文档 | ✅ |
+| 文档（16 份） | ✅ |
+| CI（测试流水线） | ✅ Ubuntu + Windows 双平台 |
+| CD（打包 + 发版） | ✅ 三平台后端 + 三平台安装包，push tag 自动发布 |
 
 ### M1 待补
 
@@ -74,7 +76,8 @@ M5 高级功能        ⬜ 未开始
 | 任务层重试 | HTTP 层已重试，但单章失败后不会重新入队 | 高 |
 | 缓存层落地 | `cache` 表已建，`HttpCache` 协议无默认实现 | 中 |
 | 日志落盘 | 配置项已定义（轮转 / JSON Lines），实现待补 | 中 |
-| 桌面端实机验证 | 需 `npm install` 后跑 `npm run dev` | 中 |
+| 桌面端实机验证 | 需 `npm install` 后跑 `npm run dev`；打包产物同样未实机验证 | 高 |
+| 代码签名 | Windows SmartScreen 与 macOS Gatekeeper 会告警 | 中 |
 | 封面下载 | `cover_url` 已抓取，未下载图片并写入 EPUB | 低 |
 | 资源下载器 | 正文内嵌图片（`ContentResult.images` 已收集，未下载） | 低 |
 
@@ -233,9 +236,31 @@ $ uv run ruff check .
 All checks passed!
 ```
 
+### 2026-10-02 · CI/CD 上线
+
+仓库：https://github.com/luoqingciya/InkFlow
+
+```text
+$ uv run pyinstaller packaging/inkflow-server.spec --noconfirm
+...
+59036 INFO: Build complete! The results are available in: D:\Project\InkFlow\dist
+
+dist/inkflow-server.exe   28.2 MB
+
+$ uv run python scripts/smoke_test_backend.py
+冒烟测试：D:\Project\InkFlow\dist\inkflow-server.exe
+  [后端] INKFLOW_READY port=63648 token=s8Tm1GTniKyi4ArJysfrkCvMrBQcNFUq57piagXBBUQ
+后端已就绪，端口 63648
+  [健康检查] {"status":"ok","version":"0.1.0.dev0","uptime_seconds":0.11}
+冒烟测试通过
+```
+
+打包产物**真的能启动**，握手协议正常，版本号也一致。
+
 ### 尚未验证
 
 - 桌面端未实机运行（`npm install` + `npm run dev`）
+- Electron 打包产物未实机验证
 - WebSocket 进度推送只有手动验证，无自动化测试
 - 未对真实网站书源做兼容性验证
 

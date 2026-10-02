@@ -19,6 +19,11 @@ import sys
 import zlib
 from pathlib import Path
 
+# Windows 控制台默认可能是 cp936 / cp1252，直接打印中文会 UnicodeEncodeError
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = ROOT / "desktop" / "resources" / "icon.png"
 
@@ -36,7 +41,9 @@ def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
     return max(low, min(high, value))
 
 
-def sd_rounded_box(px: float, py: float, cx: float, cy: float, hw: float, hh: float, r: float) -> float:
+def sd_rounded_box(
+    px: float, py: float, cx: float, cy: float, hw: float, hh: float, r: float
+) -> float:
     """圆角矩形的有符号距离场。"""
     qx = abs(px - cx) - (hw - r)
     qy = abs(py - cy) - (hh - r)
@@ -125,7 +132,9 @@ def write_png(path: Path, rows: list[list[tuple[int, int, int, int]]]) -> None:
 
     def chunk(tag: bytes, data: bytes) -> bytes:
         body = tag + data
-        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+        return (
+            struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+        )
 
     png = bytearray(b"\x89PNG\r\n\x1a\n")
     png += chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0))

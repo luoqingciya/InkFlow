@@ -20,6 +20,11 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+# Windows 控制台默认可能是 cp936 / cp1252，直接打印中文会 UnicodeEncodeError
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "dist"
 READY_PREFIX = "INKFLOW_READY"
@@ -89,7 +94,10 @@ def main() -> int:
     exe = binary_path()
     print(f"冒烟测试：{exe}")
 
-    with tempfile.TemporaryDirectory() as home:
+    # ignore_cleanup_errors：Windows 上进程刚终止时文件句柄可能还没释放，
+    # 删临时目录会抛 PermissionError。清理失败不该让冒烟测试判负 ——
+    # 我们要验证的是「后端能不能起来」，不是「临时目录能不能删干净」。
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as home:
         env = {
             **os.environ,
             "INKFLOW_HOME": home,
@@ -117,9 +125,10 @@ def main() -> int:
         finally:
             process.terminate()
             try:
-                process.wait(timeout=10)
+                process.wait(timeout=15)
             except subprocess.TimeoutExpired:
                 process.kill()
+                process.wait(timeout=5)
 
     print("冒烟测试通过")
     return 0
