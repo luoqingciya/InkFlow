@@ -1,0 +1,120 @@
+[project]
+name = "inkflow-workspace"
+version = "0.1.0"
+description = "InkFlow —— API-First 小说资源聚合与下载平台（uv workspace 根）"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "洛清辞" }]
+keywords = ["novel", "downloader", "legado", "epub", "api-first"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Text Processing :: Markup :: XML",
+]
+
+# 根项目是虚拟包，只做 workspace 聚合，不参与构建。
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+# 各成员包统一在此声明 workspace 来源，成员 pyproject 只写包名。
+[tool.uv.sources]
+inkflow-core = { workspace = true }
+inkflow-source = { workspace = true }
+inkflow-legado = { workspace = true }
+inkflow-api = { workspace = true }
+inkflow-cli = { workspace = true }
+inkflow-export = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "types-pyyaml>=6.0",
+]
+
+# ---------------------------------------------------------------- ruff
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".venv", "desktop", "node_modules"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "RUF", # ruff 自有规则
+]
+ignore = [
+    "E501",   # 行长由 formatter 负责
+    "RUF001", # 全角标点：中文项目里是刻意的，不是笔误
+    "RUF002", # 同上（docstring）
+    "RUF003", # 同上（注释）
+    "RUF022", # __all__ 按「模型 / 配置 / 错误 / 工具」分组比字母序更可读
+]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "inkflow_core",
+    "inkflow_source",
+    "inkflow_legado",
+    "inkflow_api",
+    "inkflow_cli",
+    "inkflow_export",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+# ---------------------------------------------------------------- mypy
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+check_untyped_defs = true
+show_error_codes = true
+exclude = ["desktop/", "\\.venv/"]
+
+[[tool.mypy.overrides]]
+module = ["lxml.*", "jsonpath_ng.*"]
+ignore_missing_imports = true
+
+# 测试代码放宽：pytest 的 fixture 参数靠注入，逐个标注类型只会增加噪音，
+# 而不会带来任何真实的类型保障
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+
+# ---------------------------------------------------------------- pytest
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-q --strict-markers"
+markers = [
+    "unit: 单元测试",
+    "integration: 集成测试",
+    "source: 书源兼容性测试",
+    "e2e: 端到端测试",
+    "network: 需要真实网络访问",
+]

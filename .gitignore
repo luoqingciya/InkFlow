@@ -1,0 +1,70 @@
+# ---------------------------------------------------------------- Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 工具缓存
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# ---------------------------------------------------------------- Node / Electron
+node_modules/
+desktop/out/
+desktop/dist/
+desktop/release/
+.electron-vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------------------------------------------------------------- InkFlow 运行时数据
+# 用户数据目录不在仓库内（~/.inkflow），这里兜底排除误建的同名目录
+.inkflow/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 下载产物
+downloads/
+exports/
+
+# 本地配置（config.example.toml 是模板，真实配置不入库）
+config.toml
+config.local.toml
+
+# ---------------------------------------------------------------- 书源
+# 社区书源与用户导入书源不入库，仅保留目录占位与测试夹具
+sources/community/*.json
+sources/community/*.js
+!sources/community/.gitkeep
+sources/local/
+
+# ---------------------------------------------------------------- 编辑器 / 系统
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini

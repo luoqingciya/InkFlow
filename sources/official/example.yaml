@@ -1,0 +1,78 @@
+# InkFlow 原生书源示例（Level 1）
+#
+# 这是一个**模板**，其中的地址与选择器都是占位内容，直接导入不会工作。
+# 复制它、把 url / selector 换成目标站点的真实结构即可。
+#
+# 字段取值语法：
+#   selector: CSS 选择器，或以 / 开头的 XPath；留空表示元素自身
+#   attr:     text | html | @属性名
+#   regex:    可选，在取值后再做一次提取（注意用单引号，YAML 双引号里 \S 是非法转义）
+#   absolute: 可选，相对 URL 转绝对
+#   default:  可选，取不到时的兜底值
+#
+# 导入：
+#   inkflow sources import sources/official/example.yaml
+
+name: Example 书源
+url: https://example.com
+version: "1.0"
+author: 你的名字
+license: Apache-2.0
+description: 原生书源模板，请替换为真实站点结构
+
+# 请求层约束（只会收紧全局配置，不会放宽）
+concurrency: 3
+requests_per_second: 2
+timeout: 20
+retry: 3
+
+# 搜索：URL 模板支持 {{key}}（关键词）、{{page}}（页码）
+search:
+  method: GET
+  url: /search
+  params:
+    q: "{{key}}"
+    page: "{{page}}"
+  list:
+    selector: div.book-item
+    fields:
+      name: { selector: "h3 a", attr: text }
+      author: { selector: ".author", attr: text }
+      book_url: { selector: "h3 a", attr: "@href", absolute: true }
+      latest_chapter: { selector: ".latest", attr: text }
+
+# 详情页
+book:
+  url: "{{bookUrl}}"
+  fields:
+    name: { selector: "h1.book-name", attr: text }
+    author: { selector: ".author", attr: text, regex: '作者：(.+)' }
+    intro: { selector: "#intro", attr: text }
+    cover_url: { selector: "#cover", attr: "@src", absolute: true }
+    category: { selector: ".kind", attr: text }
+    status: { selector: ".status", attr: text }
+    word_count: { selector: ".word-count", attr: text }
+    latest_chapter: { selector: ".latest", attr: text, regex: '最新章节：(.+)' }
+
+# 目录：next_page 让适配器自动翻页，max_pages 是死循环保险
+toc:
+  url: "{{bookUrl}}"
+  next_page: "a.next-page"
+  max_pages: 20
+  list:
+    selector: "ul#chapter-list li a"
+    fields:
+      name: { selector: "", attr: text }
+      url: { selector: "", attr: "@href", absolute: true }
+
+# 正文：strip 里的节点会在提取前被移除
+content:
+  url: "{{chapterUrl}}"
+  selector: "div#content"
+  next_page: "a.next-content"
+  max_pages: 20
+  strip:
+    - "script"
+    - "style"
+    - "div.ad"
+    - "div.ad-inline"

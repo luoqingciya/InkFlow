@@ -1,0 +1,72 @@
+# InkFlow 配置模板
+#
+# 复制为 config.toml 后修改；config.toml 不入库（见 .gitignore）。
+# 优先级：环境变量 INKFLOW_* > config.toml > 内置默认值。
+#
+# 数据目录默认为 ~/.inkflow（Windows: C:\Users\<你>\.inkflow），
+# 可用 INKFLOW_HOME 环境变量整体重定向。
+
+[server]
+# 默认只监听回环地址。不要改成 0.0.0.0 —— 那会把本地下载器暴露到局域网。
+host = "127.0.0.1"
+# 0 表示由系统分配空闲端口，Desktop 启动时正是依赖这一点做端口协商。
+port = 0
+# 是否强制要求 Bearer Token。Desktop 自动启动后端时始终为 true。
+require_token = true
+
+[download]
+# 单个下载任务的默认章节并发数，会被书源级 concurrency 进一步压低。
+concurrency = 4
+timeout = 20
+retry = 3
+# 重试退避基数（秒），实际等待为 base * 2^(n-1)，并叠加抖动。
+retry_backoff = 1.0
+# 章节间最小间隔（秒），避免对同一站点形成突发流量。
+min_interval = 0.0
+
+[export]
+default_format = "epub"
+default_output_dir = ""   # 留空则使用 ~/.inkflow/exports
+# 文件名模板，可用变量：{name} {author} {source}
+filename_template = "{name} - {author}"
+
+[cache]
+enabled = true
+# 体积上限，支持 KB / MB / GB 后缀。超出后按 LRU 淘汰。
+max_size = "2GB"
+# HTTP 响应缓存 TTL（秒）。0 表示不缓存 HTTP 层，只缓存章节正文。
+http_ttl = 3600
+
+[source]
+# 全局并发上限，任何单书源并发都不会突破它。
+global_concurrency = 16
+# 单域名并发上限，跨书源共享。
+domain_concurrency = 6
+requests_per_second = 2.0
+timeout = 20
+retry = 3
+# 是否允许书源请求内网 / 回环地址（SSRF 防护开关）。默认关闭。
+allow_private_network = false
+
+[js]
+# Legado JS Source 执行沙箱（Milestone 3）。MVP 阶段此项无实际作用。
+enabled = false
+timeout = 15
+max_memory_mb = 128
+max_requests = 50
+max_response_size = "8MB"
+
+[browser]
+# 浏览器运行时（Milestone 4）。仅在书源显式声明需要时启用。
+enabled = false
+engine = "playwright"     # playwright | electron
+headless = true
+timeout = 30
+
+[log]
+level = "INFO"            # DEBUG | INFO | WARNING | ERROR
+# 结构化日志（JSON Lines）。关闭时为人类可读格式。
+json_logs = false
+# 日志文件轮转。
+rotate_max_mb = 10
+rotate_backups = 5

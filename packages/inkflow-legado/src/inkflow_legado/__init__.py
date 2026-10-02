@@ -1,0 +1,69 @@
+"""inkflow-legado —— Legado 书源兼容层。
+
+**这是一个隔离的 Compatibility Runtime，不是 Legado 的二次实现。**
+
+它只做三件事：
+
+1. 解析 Legado 书源 JSON 结构（``schema``）
+2. 把 Legado 规则 DSL 编译成统一 AST（``compiler`` / ``rules``）
+3. 执行 AST 并产出 ``inkflow_core`` 的标准结果（``adapter``）
+
+当前覆盖 **L0 + L1**（JSON 结构、CSS / XPath / JSONPath / 正则）。
+L2（JS 沙箱）与 L3（浏览器）尚未实现，遇到时抛出明确错误而非静默失败。
+
+本包不复制 Legado 项目的任何源代码。
+"""
+
+from inkflow_legado.adapter import LegadoSourceAdapter, split_url_options
+from inkflow_legado.compiler import (
+    LegadoRuleCompiler,
+    compile_rule,
+    default_compiler,
+    legado_selector_to_css,
+    render_legado_template,
+)
+from inkflow_legado.register import (
+    build_legado_source,
+    detect_level,
+    register_legado,
+    stable_source_id,
+)
+from inkflow_legado.rules import Replacement, Rule, RuleContext, RuleMode
+from inkflow_legado.schema import (
+    LegadoBookInfoRule,
+    LegadoBookSource,
+    LegadoContentRule,
+    LegadoSearchRule,
+    LegadoTocRule,
+)
+
+__version__ = "0.1.0"
+
+__all__ = [
+    "__version__",
+    # schema
+    "LegadoBookSource",
+    "LegadoSearchRule",
+    "LegadoBookInfoRule",
+    "LegadoTocRule",
+    "LegadoContentRule",
+    # rules
+    "Rule",
+    "RuleMode",
+    "RuleContext",
+    "Replacement",
+    # compiler
+    "LegadoRuleCompiler",
+    "default_compiler",
+    "compile_rule",
+    "legado_selector_to_css",
+    "render_legado_template",
+    # adapter
+    "LegadoSourceAdapter",
+    "split_url_options",
+    # register
+    "register_legado",
+    "build_legado_source",
+    "stable_source_id",
+    "detect_level",
+]

@@ -1,0 +1,49 @@
+# 针对 tests/mock_server.py 起的本地 mock 书站的书源。
+#
+# 用途：手动验证完整流程（搜索 → 详情 → 目录 → 正文），不依赖任何真实网站。
+#
+#   1. 起 mock 站点：uv run python -m tests.mock_server --serve
+#   2. 导入：inkflow sources import sources/test/mock-site.yaml
+#   3. 测试：inkflow sources test <source-id> --kind search --keyword 三体
+#
+# 注意：mock 站点监听 127.0.0.1，需要把 config.toml 里的
+# source.allow_private_network 设为 true，否则会被 SSRF 防护拦下。
+
+name: Mock 书站
+url: http://127.0.0.1:8765
+description: 本地 mock 书站，用于端到端验证
+
+search:
+  url: /search
+  params:
+    q: "{{key}}"
+  list:
+    selector: div.book-item
+    fields:
+      name: { selector: "h3 a", attr: text }
+      author: { selector: ".author", attr: text }
+      book_url: { selector: "h3 a", attr: "@href", absolute: true }
+      latest_chapter: { selector: ".latest", attr: text }
+
+book:
+  url: "{{bookUrl}}"
+  fields:
+    name: { selector: "h1.book-name", attr: text }
+    author: { selector: ".author", attr: text, regex: '作者：(.+)' }
+    intro: { selector: "#intro", attr: text }
+    cover_url: { selector: "#cover", attr: "@src", absolute: true }
+    word_count: { selector: ".word-count", attr: text }
+
+toc:
+  url: "{{bookUrl}}/toc"
+  next_page: "a.next-page"
+  list:
+    selector: "ul#chapter-list li a"
+    fields:
+      name: { selector: "", attr: text }
+      url: { selector: "", attr: "@href", absolute: true }
+
+content:
+  url: "{{chapterUrl}}"
+  selector: "div#content"
+  strip: ["div.ad-inline"]
