@@ -84,6 +84,9 @@ jobs:
           path: desktop/resources/backend
 
       - name: 确认后端就位
+        # 必须显式指定 bash：Windows runner 默认用 PowerShell，
+        # 而 PowerShell 里 ls 是 Get-ChildItem 的别名，不认识 -la
+        shell: bash
         run: ls -la desktop/resources/backend
 
       - name: 安装依赖
