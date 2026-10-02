@@ -261,6 +261,11 @@ cd desktop && npm install && npm run dev
 **导出的 EPUB 没有封面？** 封面地址在**详情页**规则里，下载时若书库里
 还没有封面，InkFlow 会补抓一次详情页。若书源本身没写封面规则，就没有封面。
 
+**EPUB 里为什么没有插图？** 正文插图**会下载到本地**
+（`.inkflow/books/<书籍ID>/images/`），但**不嵌进 EPUB**。
+要嵌进去得让正文保留图片位置，而正文目前是纯文本 —— 那是「正文格式」的
+架构改动，收益不抵改动面。图片文件本身在磁盘上，需要的话可以自己去取。
+
 **想看服务在干什么？** 日志在 `.inkflow/logs/inkflow.log`，
 配置里可开 JSON Lines 格式（见 `config.example.toml` 的 `[log]` 段）。
 
