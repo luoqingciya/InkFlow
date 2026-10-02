@@ -312,7 +312,7 @@ class DownloadTaskManager:
             self._runners.pop(task_id, None)
 
     async def _execute(self, task_id: str) -> None:
-        """按章节并发下载。"""
+        """按章节并发下载，失败章节按轮次重试。"""
         task = self.library.get_task(task_id)
         book = self.library.get_book(task.book_id)
         chapters = [
@@ -347,21 +347,60 @@ class DownloadTaskManager:
                 },
             )
 
-        async def worker(chapter: Chapter) -> None:
+        async def worker(chapter: Chapter) -> bool:
+            """下载一章。返回是否成功。"""
             if self._cancel_flags.get(task_id):
-                return
+                return True  # 取消不算失败，别让它进重试队列
             await pause_event.wait()
             if self._cancel_flags.get(task_id):
-                return
+                return True
 
             item = items.get(chapter.index)
             async with semaphore:
-                await self._download_chapter(task_id, book, chapter, item, adapter)
+                return await self._download_chapter(task_id, book, chapter, item, adapter)
 
-        try:
-            await asyncio.gather(*(worker(chapter) for chapter in pending))
-        except asyncio.CancelledError:
-            raise
+        rounds = self._retry_rounds()
+        current = pending
+
+        for attempt_round in range(rounds + 1):
+            if not current:
+                break
+
+            results = await asyncio.gather(*(worker(chapter) for chapter in current))
+            failed = [chapter for chapter, ok in zip(current, results, strict=True) if not ok]
+
+            if not failed:
+                break
+            if attempt_round >= rounds:
+                break  # 重试额度用完，失败章节到此为止
+            if self._cancel_flags.get(task_id):
+                break
+
+            # 重试前先等一会儿：瞬时故障（限流、连接抖动）往往很快就恢复
+            delay = self._retry_delay(attempt_round)
+            if delay > 0:
+                self.broker.publish(
+                    task_id,
+                    {
+                        "type": "progress",
+                        "completed": task.completed,
+                        "failed": task.failed,
+                        "total": task.total,
+                        "message": (
+                            f"{len(failed)} 个章节失败，{delay:.1f}s 后重试"
+                            f"（第 {attempt_round + 1}/{rounds} 轮）"
+                        ),
+                    },
+                )
+                await asyncio.sleep(delay)
+            if self._cancel_flags.get(task_id):
+                break
+
+            # 本轮失败的不再计入 failed —— 下一轮成功了就不该留错误痕迹
+            task = self.library.get_task(task_id)
+            task.failed = max(0, task.failed - len(failed))
+            self.library.save_task(task)
+            current = failed
 
         task = self.library.get_task(task_id)
         if self._cancel_flags.get(task_id):
@@ -392,6 +431,17 @@ class DownloadTaskManager:
             },
         )
 
+    def _retry_rounds(self) -> int:
+        """任务层重试轮数。"""
+        return max(0, int(self.settings.download.retry))
+
+    def _retry_delay(self, attempt_round: int) -> float:
+        """第 n 轮重试前的等待秒数（指数退避）。"""
+        base = float(self.settings.download.retry_backoff)
+        if base <= 0:
+            return 0.0
+        return base * (2**attempt_round)
+
     async def _download_chapter(
         self,
         task_id: str,
@@ -399,8 +449,12 @@ class DownloadTaskManager:
         chapter: Chapter,
         item: DownloadTaskItem | None,
         adapter: Any,
-    ) -> None:
-        """下载单章。失败只累计计数，不抛出。"""
+    ) -> bool:
+        """下载单章。失败只累计计数，不抛出。
+
+        Returns:
+            该章是否成功。
+        """
         if item is not None:
             item.status = TaskItemStatus.RUNNING
             item.attempts += 1
@@ -420,6 +474,7 @@ class DownloadTaskManager:
 
             if item is not None:
                 item.status = TaskItemStatus.SUCCESS
+                item.error = None  # 重试成功后清掉上一轮的错误
                 item.finished_at = utcnow()
                 self.library.save_task_items([item])
 
@@ -427,6 +482,7 @@ class DownloadTaskManager:
             task.completed += 1
             self.library.save_task(task)
             self._publish_progress(task, chapter)
+            return True
 
         except Exception as exc:
             if item is not None:
@@ -439,6 +495,7 @@ class DownloadTaskManager:
             task.failed += 1
             self.library.save_task(task)
             self._publish_progress(task, chapter, error=str(exc))
+            return False
 
     def _publish_progress(
         self, task: DownloadTask, chapter: Chapter, *, error: str | None = None

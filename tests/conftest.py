@@ -8,11 +8,13 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 from fastapi.testclient import TestClient
 
 from tests.mock_server import MockSite, start_mock_site
+from tests.sources_data import NATIVE_SOURCE_TEMPLATE
 
 # ---------------------------------------------------------------- 环境隔离
 
@@ -102,6 +104,36 @@ def client(state) -> Iterator[TestClient]:
 
 
 @pytest.fixture
+def library(client: TestClient, mock_site: str) -> _Library:
+    """已导入 Mock 书源、「三体」的目录也抓好了的测试客户端。
+
+    下载任务依赖「书籍 + 目录」两样东西齐全，手工走一遍导入 → 搜索 →
+    抓目录要三行代码，而几乎每个下载测试都需要，所以在这里备好。
+
+    **注意**：搜索会把 mock 站点的三本书**全部**入库，这里显式抓目录的
+    只有「三体」那一本。因此别走 ``/api/v1/books`` 列表拿第一本
+    （列表按更新时间倒序，拿到的是「三体 III」，它没有目录）——
+    用 ``.book_id``。
+    """
+    client.post(
+        "/api/v1/sources/import",
+        json={"content": NATIVE_SOURCE_TEMPLATE.format(base=mock_site)},
+    )
+    items = client.get("/api/v1/search", params={"q": "三体"}).json()["items"]
+    selected = next(item for item in items if item["name"] == "三体")
+    selected_id = selected["sources"][0]["book_id"]
+    client.get(f"/api/v1/books/{selected_id}/chapters", params={"refresh": True})
+    return _Library(client=client, book_id=selected_id)
+
+
+class _Library(NamedTuple):
+    """``library`` 夹具的返回值：客户端 + 那本备好目录的书。"""
+
+    client: TestClient
+    book_id: str
+
+
+@pytest.fixture
 def authed_client(state) -> Iterator[TestClient]:
     """带 token 的测试客户端，用于验证鉴权确实生效。"""
     from inkflow_api.app import create_app
@@ -110,3 +142,34 @@ def authed_client(state) -> Iterator[TestClient]:
     with TestClient(app) as test_client:
         test_client.headers.update({"Authorization": f"Bearer {state.session_token}"})
         yield test_client
+
+
+# ---------------------------------------------------------------- 等待
+
+
+def wait_for_terminal(
+    client: TestClient,
+    task_id: str,
+    *,
+    timeout: float = 20.0,
+) -> dict:
+    """轮询任务直到进入终态，返回最终的 task 字典。
+
+    下载是异步的 —— ``POST /tasks`` 返回时任务才刚 PENDING。测试里
+    与其 ``sleep`` 一个拍脑袋的时长，不如轮询到状态真的定下来。
+
+    Raises:
+        AssertionError: 超时仍没进终态。
+    """
+    from time import monotonic, sleep
+
+    deadline = monotonic() + timeout
+    task: dict = {}
+    while monotonic() < deadline:
+        task = client.get(f"/api/v1/tasks/{task_id}").json()["task"]
+        if task["status"] in {"COMPLETED", "FAILED", "CANCELLED"}:
+            return task
+        sleep(0.05)
+    raise AssertionError(
+        f"任务 {task_id} 在 {timeout}s 内未进入终态，最后状态 {task.get('status')}"
+    )

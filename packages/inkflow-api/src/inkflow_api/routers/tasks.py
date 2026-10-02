@@ -74,6 +74,22 @@ async def get_task_items(state: StateDep, task_id: str) -> TaskItemsResponse:
     )
 
 
+@router.post("/{task_id}/start", response_model=DownloadTask, summary="启动任务")
+async def start_task(state: StateDep, task_id: str) -> DownloadTask:
+    """启动一个**尚未运行**的任务。
+
+    配合 ``auto_start=false`` 使用：先建任务让客户端接上 WebSocket，
+    再调这里启动 —— 否则任务可能在连接建立前就跑完了，进度事件全丢。
+
+    幂等：任务已在运行时原样返回。
+
+    Raises:
+        NotFoundError: 任务不存在。
+        InkFlowError: 任务已处于终态。
+    """
+    return await state.tasks.start(task_id)
+
+
 @router.post("/{task_id}/pause", response_model=DownloadTask, summary="暂停任务")
 async def pause_task(state: StateDep, task_id: str) -> DownloadTask:
     """暂停任务。
