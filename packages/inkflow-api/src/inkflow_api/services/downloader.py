@@ -25,9 +25,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
+import re
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin
 
 from inkflow_api.services.library import LibraryService
 from inkflow_core.config import Settings
@@ -41,11 +44,36 @@ from inkflow_core.models import (
     TaskItemStatus,
     TaskStatus,
 )
+from inkflow_core.normalize import hash_bytes
 from inkflow_core.paths import InkFlowPaths
 from inkflow_core.utils import new_task_id, new_task_item_id, utcnow
-from inkflow_source.registry import SourceRegistry
+from inkflow_source.http import HttpResponse
+from inkflow_source.registry import HttpFactory, SourceRegistry
 
 __all__ = ["DownloadTaskManager", "ProgressBroker"]
+
+logger = logging.getLogger("inkflow.download")
+
+#: 从原始 HTML 里抠出图片地址。只认 src，``data-src`` 之类懒加载属性
+#: 不在这里处理 —— 那是书源规则该管的事。
+_IMG_SRC_RE = re.compile(r"""<img[^>]+src\s*=\s*["']([^"']+)["']""", re.IGNORECASE)
+
+#: 常见图片扩展名，用于给下载的图片命名
+_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg")
+
+
+def _media_type_of(headers: dict[str, str]) -> str:
+    """从响应头取 MIME 类型，去掉 ``; charset=...`` 参数。"""
+    return headers.get("content-type", "").split(";")[0].strip().lower()
+
+
+def _suffix_of(url: str) -> str:
+    """从地址猜图片扩展名；认不出来就给 ``.jpg``。"""
+    path = url.split("?")[0].split("#")[0].lower()
+    for suffix in _IMAGE_SUFFIXES:
+        if path.endswith(suffix):
+            return suffix
+    return ".jpg"
 
 
 class ProgressBroker:
@@ -100,11 +128,15 @@ class DownloadTaskManager:
         library: LibraryService,
         settings: Settings,
         paths: InkFlowPaths,
+        http_factory: HttpFactory | None = None,
     ) -> None:
         self.registry = registry
         self.library = library
         self.settings = settings
         self.paths = paths
+        # 下载封面 / 正文插图用。与书源共用同一套约束（超时、限速、SSRF 防护），
+        # 不另起一套配置。
+        self.http_factory = http_factory
         self.broker = ProgressBroker()
 
         self._runners: dict[str, asyncio.Task[None]] = {}
@@ -527,7 +559,7 @@ class DownloadTaskManager:
         """任务完成后导出。"""
         from inkflow_export import ExportChapter, ExportRequest, get_exporter
 
-        book = self.library.get_book(task.book_id)
+        book = await self._refresh_book_metadata(self.library.get_book(task.book_id))
         chapters = [
             c
             for c in self.library.get_chapters(task.book_id)
@@ -550,16 +582,152 @@ class DownloadTaskManager:
         with contextlib.suppress(Exception):
             source_name = self.library.get_source(book.source_id).name
 
+        cover = await self._fetch_cover(book)
+        await self._download_images(book, chapters, contents)
+
         request = ExportRequest(
             book=book,
             chapters=[ExportChapter(chapter=c, content=contents.get(c.id)) for c in chapters],
             output_path=output_path,
             source_name=source_name,
+            cover_bytes=cover[0] if cover else None,
+            cover_media_type=cover[1] if cover else "image/jpeg",
         )
         written = await asyncio.to_thread(exporter.export, request)
 
         task.output_path = str(written)
         self.library.save_task(task)
+
+    # -- 资源下载 ----------------------------------------------------------
+
+    async def _refresh_book_metadata(self, book: Book) -> Book:
+        """缺封面时补抓一次详情页。
+
+        封面只存在于**详情页**规则里，搜索结果里没有。不补这一步，
+        「封面下载」就永远不会生效 —— 除非用户恰好手动翻过详情页。
+        已经有封面就不重复请求。
+        """
+        if book.cover_url:
+            return book
+
+        try:
+            adapter = self.registry.get(book.source_id)
+            info = await adapter.book_info(book.source_book_url)
+        except Exception as exc:
+            logger.warning("书籍详情抓取失败 %s：%s", book.source_book_url, exc)
+            return book
+
+        if not info.cover_url:
+            return book
+
+        book.cover_url = info.cover_url
+        with contextlib.suppress(Exception):
+            self.library.upsert_book(book)
+        return book
+
+    async def _asset_get(self, source_id: str, url: str) -> HttpResponse | None:
+        """用书源的 HTTP 配置抓一个资源（封面 / 插图）。
+
+        复用书源的 headers 与超时：不少站点的图片有防盗链，
+        带上 Referer 反而更容易拿到。
+        """
+        if self.http_factory is None:
+            return None
+        source = self.library.get_source(source_id)
+        async with self.http_factory(source) as client:
+            return await client.get(url)
+
+    async def _fetch_cover(self, book: Book) -> tuple[bytes, str] | None:
+        """下载封面。
+
+        失败一律返回 ``None`` —— 封面是锦上添花，不该因为它拿不到
+        就让整本书导出失败。但失败要留痕，所以打 warning。
+        """
+        if not book.cover_url:
+            return None
+
+        try:
+            response = await self._asset_get(book.source_id, book.cover_url)
+        except Exception as exc:
+            logger.warning("封面下载失败 %s：%s", book.cover_url, exc)
+            return None
+
+        if response is None or not response.ok:
+            logger.warning(
+                "封面下载失败 %s：HTTP %s",
+                book.cover_url,
+                response.status if response else "无响应",
+            )
+            return None
+
+        media_type = _media_type_of(response.headers)
+        if not media_type.startswith("image/"):
+            logger.warning("封面不是图片（%s）：%s", media_type or "未知类型", book.cover_url)
+            return None
+
+        return response.content, media_type
+
+    async def _download_images(
+        self,
+        book: Book,
+        chapters: list[Chapter],
+        contents: dict[str, ChapterContent],
+    ) -> int:
+        """把正文内嵌图片下载到书籍目录，返回成功张数。
+
+        地址从 ``raw_content`` 提取 —— 清洗后的正文是纯文本，已不含
+        ``<img>`` 标签，只有原始 HTML 才留着图片位置。
+
+        注意：**这一步只负责把图片存到本地**。EPUB 里内嵌它们还需要
+        正文保留图片位置（当前 ``clean_content`` 是纯文本），那是另一
+        件事，见 docs。
+        """
+        targets: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        for chapter in chapters:
+            content = contents.get(chapter.id)
+            if content is None:
+                continue
+            for raw_src in _IMG_SRC_RE.findall(content.raw_content):
+                url = urljoin(chapter.url, raw_src)
+                if url not in seen:
+                    seen.add(url)
+                    targets.append((url, _suffix_of(url)))
+
+        if not targets:
+            return 0
+
+        directory = self.paths.books_dir / book.id / "images"
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            logger.warning("插图目录创建失败 %s：%s", directory, exc)
+            return 0
+
+        saved = 0
+        for url, suffix in targets:
+            target = directory / f"{hash_bytes(url.encode())[:16]}{suffix}"
+            if target.exists():
+                saved += 1
+                continue
+            try:
+                response = await self._asset_get(book.source_id, url)
+            except Exception as exc:
+                logger.warning("插图下载失败 %s：%s", url, exc)
+                continue
+            if response is None or not response.ok:
+                logger.warning(
+                    "插图下载失败 %s：HTTP %s", url, response.status if response else "无响应"
+                )
+                continue
+            try:
+                target.write_bytes(response.content)
+            except OSError as exc:
+                logger.warning("插图写入失败 %s：%s", target, exc)
+                continue
+            saved += 1
+
+        return saved
 
     def _default_output_path(self, book: Book, fmt: str) -> Path:
         """默认导出路径：``~/.inkflow/exports/<书名>.<扩展名>``。"""

@@ -16,6 +16,14 @@ __all__ = ["start_mock_site", "MockSite", "FIXTURE_DIR"]
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "mock-site"
 
+#: 1×1 的 PNG。图片端点直接吐它 —— 测试要的是「能下到一个图片字节流」，
+#: 不需要真实图像内容，也不该为它引入图像库。
+TINY_PNG = bytes.fromhex(
+    "89504e470d0a1a0a0000000d494844520000000100000001"
+    "08060000001f15c4890000000a49444154789c6300010000"
+    "0500010d0a2db40000000049454e44ae426082"
+)
+
 
 class _Handler(BaseHTTPRequestHandler):
     """把路径映射到夹具文件。"""
@@ -24,15 +32,23 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+
+        # 封面与正文插图：任何 /cover/ 或 /img/ 下的路径都返回同一张 PNG
+        if parsed.path.startswith(("/cover/", "/img/")):
+            self._send_bytes(TINY_PNG, "image/png")
+            return
+
         body = self._resolve(parsed.path, parse_qs(parsed.query))
 
         if body is None:
             self.send_error(404, "Not Found")
             return
 
-        payload = body.encode("utf-8")
+        self._send_bytes(body.encode("utf-8"), "text/html; charset=utf-8")
+
+    def _send_bytes(self, payload: bytes, content_type: str) -> None:
         self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
