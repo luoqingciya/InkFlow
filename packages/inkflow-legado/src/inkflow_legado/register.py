@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from inkflow_js_runtime import JsRuntime
-
 from inkflow_core.browser import BrowserProvider
 from inkflow_core.errors import ErrorCode, SourceError
 from inkflow_core.models import (
@@ -27,6 +25,7 @@ from inkflow_core.models import (
     SourceType,
 )
 from inkflow_core.utils import stable_id
+from inkflow_js_runtime import JsRuntime
 from inkflow_legado.adapter import LegadoSourceAdapter
 from inkflow_legado.schema import LegadoBookSource
 from inkflow_source.http import HttpClient

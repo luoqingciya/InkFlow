@@ -11,8 +11,6 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urljoin
 
-from inkflow_js_runtime import JsRuntime, JsRuntimeError
-
 from inkflow_core.browser import BrowserError, BrowserProvider, BrowserUnavailableError
 from inkflow_core.errors import ErrorCode, SourceError
 from inkflow_core.models import (
@@ -21,6 +19,7 @@ from inkflow_core.models import (
     ChapterResult,
     ContentResult,
 )
+from inkflow_js_runtime import JsRuntime, JsRuntimeError
 from inkflow_legado.compiler import LegadoRuleCompiler, render_legado_template
 from inkflow_legado.rules import Rule, RuleContext, RuleMode
 from inkflow_legado.schema import LegadoBookSource

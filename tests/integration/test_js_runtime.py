@@ -10,9 +10,9 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 
 import pytest
-from inkflow_js_runtime import JsRuntime, JsRuntimeError, JsUnavailableError, find_node
 
 from inkflow_core.config import JsConfig
+from inkflow_js_runtime import JsRuntime, JsRuntimeError, JsUnavailableError, find_node
 
 pytestmark = pytest.mark.integration
 

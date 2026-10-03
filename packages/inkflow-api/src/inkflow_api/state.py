@@ -10,8 +10,6 @@ import sys
 from dataclasses import dataclass, field
 from time import monotonic
 
-from inkflow_js_runtime import JsRuntime
-
 from inkflow_api.auth import generate_token
 from inkflow_api.services import DownloadTaskManager, LibraryService, SqliteHttpCache
 from inkflow_core.browser import BrowserProvider, BrowserRegistry
@@ -20,6 +18,7 @@ from inkflow_core.models import BookSource
 from inkflow_core.paths import InkFlowPaths, get_paths
 from inkflow_core.storage import Database
 from inkflow_export import available_formats
+from inkflow_js_runtime import JsRuntime
 from inkflow_source import SearchAggregator, SourceLoader, SourceRegistry
 from inkflow_source.http import HttpCache, HttpClient
 from inkflow_source.loader import default_loader

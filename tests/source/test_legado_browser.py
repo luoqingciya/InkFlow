@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import pytest
 
+from inkflow_browser_playwright import PlaywrightBrowserProvider
+from inkflow_core.browser import BrowserProvider
+from inkflow_core.config import BrowserConfig
 from inkflow_core.errors import SourceError
 from inkflow_legado import LegadoSourceAdapter, build_legado_source
 from inkflow_source.http import HttpClient
@@ -35,7 +38,7 @@ class _RecordingBrowser(StubBrowserProvider):
         return await super().fetch_html(url, js=js, timeout=timeout)
 
 
-def _adapter(definition: dict, browser: StubBrowserProvider | None = None) -> LegadoSourceAdapter:
+def _adapter(definition: dict, browser: BrowserProvider | None = None) -> LegadoSourceAdapter:
     """构造适配器。
 
     显式建 HTTP 客户端并放行内网 —— mock 站点跑在 127.0.0.1 上，
@@ -136,6 +139,30 @@ async def test_web_js_absent_keeps_plain_fetch(mock_site: str) -> None:
     assert browser.fetched == []
 
 
+# ================================================================ 真实引擎
+
+
+@pytest.mark.browser
+async def test_webview_end_to_end_with_real_engine(mock_site: str) -> None:
+    """真实引擎 + 适配器合起来跑一遍。
+
+    上面几条用的是桩（快、日常 CI 能跑），这条把「适配器 → 真浏览器」
+    这条缝也钉住 —— 桩能过不代表真引擎能过。
+
+    需要装了 playwright 与浏览器（见 browser.yml 流水线）。
+    """
+    provider = PlaywrightBrowserProvider(BrowserConfig(enabled=True, engine="playwright"))
+    definition = legado_source(mock_site)
+    definition["searchUrl"] = "/search?q={{key}},{'webView': true}"
+    adapter = _adapter(definition, provider)
+    try:
+        results = await adapter.search("三体")
+    finally:
+        await provider.close()
+
+    assert len(results) == 3
+
+
 # ================================================================ 装配
 
 
@@ -169,6 +196,7 @@ async def test_assembly_injects_browser_into_adapter(tmp_path) -> None:
 
         adapter = state.registry.create(source, replace=True)
 
+        assert isinstance(adapter, LegadoSourceAdapter)
         assert adapter.browser is state.browser
     finally:
         await state.shutdown()
@@ -199,6 +227,7 @@ async def test_assembly_leaves_browser_off_by_default(tmp_path) -> None:
 
         adapter = state.registry.create(source, replace=True)
 
+        assert isinstance(adapter, LegadoSourceAdapter)
         assert adapter.browser is None
     finally:
         await state.shutdown()
