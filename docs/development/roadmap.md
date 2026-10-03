@@ -494,6 +494,42 @@ $ uv run mypy .                → Success: no issues found in 96 source files
 新增测试：`tests/integration/test_js_runtime.py`（27 项，含沙箱隔离与超时）、
 `tests/source/test_legado_js.py`（9 项，含 `@js:` 书源端到端）。
 
+### 2026-10-03 · 用真实书源校准兼容层
+
+洛清辞提供了一份 1363 条的真实 Legado 书源集合。拿它做体检，发现
+**37% 的规则根本跑不起来** —— 而此前所有测试都是围绕自己写的 mock 书源，
+证明不了对真实书源的兼容性。
+
+```text
+$ uv run pytest -q
+268 passed
+
+$ uv run ruff check .          → All checks passed!
+$ uv run mypy .                → Success: no issues found in 96 source files
+```
+
+**体检结果（修复前 → 修复后）**：
+
+| 指标 | 修复前 | 修复后 |
+|---|---|---|
+| 结构解析（L0） | 100% | 100% |
+| 规则编译 | 0 失败 | 0 失败 |
+| **选择器求值** | **37.0% 失败** | **5.50% 失败** |
+
+**补的四种真实写法**（详见 [ADR-021](../architecture/decisions.md)）：
+
+- `$.xxx` —— 隐式 JSONPath（不写 `@json:`），1400+ 条
+- `!N` / `!N:M` / `.N` / `.-1` —— 下标与切片，443+ 条
+- `{{...}}` —— 模板（不是选择器）
+- `[attr=og:x:y]` —— 属性值没加引号（书源不规范，但 Legado 容忍）
+
+**两次自己挖的坑**：体检脚本先是用 `html_parser.select` 绕过下标解析、
+后来只用 `compile()` 漏掉选择器语法 —— **两次都是脚本自身的问题**，
+不是被测代码的问题。教训：体检工具必须走和线上完全一样的路径。
+
+**剩余 5.50%** 未覆盖，多是书源本身写得不规范（`?` 在属性值里、
+`!` 在开头、模板嵌在中间）。边际收益递减，**暂时不再逐条追**。
+
 ### 尚未验证
 
 - Electron 打包产物在 macOS / Linux 上未实机验证（Windows 已验）—— **已搁置**
