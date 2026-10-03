@@ -206,7 +206,7 @@ Python (Legado 适配器)
 | 可复用契约测试（跑在测试桩上，日常 CI 可跑） | ✅ |
 | Playwright 引擎包（`packages/inkflow-browser-playwright`） | ✅ |
 | `webView`（URL 选项形式）接到 Legado 适配器 | ✅ |
-| `java.webView(...)` 宿主 API（JS 规则里调的那种） | ⬜ |
+| `java.webView(...)` 宿主 API（JS 规则里调的那种） | ✅ |
 | 首次启用时的下载引导（API / CLI 里提示并触发安装） | ⬜ |
 | 真实浏览器用例的定时跑（先手动触发，看清成本再定） | ⬜ |
 

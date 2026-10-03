@@ -115,6 +115,34 @@ export function createJavaApi({ hostRequest, log }) {
       });
     },
 
+    // ---------------------------------------------------------------- 浏览器
+
+    /**
+     * Legado：`java.webView(html, url, js)` —— 用浏览器加载页面，返回渲染后的 HTML。
+     *
+     * 真实书源一律写 `java.webView(null, url, js)`：第一个参数恒为 `null`。
+     * 传非 null 表示「渲染这段 HTML 而不是去请求」—— 本实现不支持，
+     * 由 Python 侧**明确报错**，不当没看见。
+     *
+     * @param {?string} html 恒为 null。
+     * @param {string} url 目标地址。
+     * @param {?string} js 页面加载完后要执行的脚本。
+     */
+    webView(html, url, js) {
+      const response = hostRequest({
+        op: 'webView',
+        html: html === undefined || html === null ? null : String(html),
+        url: String(url ?? ''),
+        js: js === undefined || js === null ? null : String(js)
+      });
+
+      if (!response || response.ok !== true) {
+        const message = response && response.error ? response.error : '浏览器运行时不可用';
+        throw new Error(`java.webView 失败：${message}`);
+      }
+      return response.value ?? '';
+    },
+
     // ---------------------------------------------------------------- 其它
 
     /**

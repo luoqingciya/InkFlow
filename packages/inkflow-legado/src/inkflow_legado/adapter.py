@@ -501,15 +501,18 @@ class LegadoSourceAdapter(BaseSourceAdapter):
     async def _host_request(self, params: dict[str, Any]) -> dict[str, Any]:
         """处理 sidecar 回调的宿主请求。
 
-        三类：
+        四类：
 
         - ``getString`` —— 用规则从**当前上下文**取值（复用 Python 的求值能力）
+        - ``webView`` —— 用浏览器加载页面（``java.webView``）
         - ``put`` / ``get`` —— 书源级变量
         - 其余 —— 网络请求（``java.ajax``）
         """
         op = params.get("op")
         if op == "getString":
             return self._host_get_string(params)
+        if op == "webView":
+            return await self._host_webview(params)
         if op == "put":
             key = str(params.get("key", ""))
             value = params.get("value")
@@ -544,6 +547,28 @@ class LegadoSourceAdapter(BaseSourceAdapter):
 
         # Legado 的 getString 返回单值，多条时取第一条
         return {"ok": True, "value": values[0] if values else ""}
+
+    async def _host_webview(self, params: dict[str, Any]) -> dict[str, Any]:
+        """``java.webView(html, url, js)`` —— 用浏览器加载页面，返回渲染后的 HTML。
+
+        真实书源的第一个参数**恒为 null**；传了非 null 表示「渲染这段 HTML
+        而不是去请求」，本实现不支持 —— 明确报错，不当作没看见。
+        """
+        if params.get("html"):
+            return {"ok": False, "error": "java.webView 不支持传入 HTML，只支持加载 URL"}
+
+        url = str(params.get("url") or "")
+        if not url:
+            return {"ok": False, "error": "java.webView 缺少 url"}
+
+        try:
+            text, _ = await self._fetch_via_browser(
+                self._resolve_url(url), js=params.get("js") or None
+            )
+        except SourceError as exc:
+            return {"ok": False, "error": str(exc)}
+
+        return {"ok": True, "value": text}
 
     async def _host_fetch(self, params: dict[str, Any]) -> dict[str, Any]:
         """``java.ajax`` 一类网络请求。
