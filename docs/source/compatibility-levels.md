@@ -29,7 +29,8 @@ Legado 书源生态里，能力的跨度非常大：从纯 CSS 选择器到依�
 L0  ✅ 已实现
 L1  ✅ 已实现
 L2  ✅ 已实现（Milestone 3，需 Node.js 20+ 且 [js] enabled = true）
-L3  ⬜ 未实现（Milestone 4）—— 1363 条真实书源里占 **5.0%**（68 条）
+L3  🟡 部分实现（Milestone 4 进行中）—— URL 选项形式的 `webView` 已支持；
+    1363 条真实书源里占 **5.0%**（68 条）
 ```
 
 **当前版本覆盖 L0 + L1 + L2（部分）。**
@@ -45,7 +46,8 @@ L2 的 `@js:` 前缀已支持，宿主 API 已覆盖真实书源里频次最高�
 ```
 
 尚未覆盖：`<js>` 标签写法、DOM 操作（`getElements` / `getStringList`）、
-`aesBase64Decode` 等加解密、cookie 管理（`getCookie`）、`webView`（L3）。
+`aesBase64Decode` 等加解密、cookie 管理（`getCookie`）、
+`java.webView` 宿主 API（L3；URL 选项形式的 `webView` 已支持）。
 详见 [roadmap](../development/roadmap.md#m3-js-runtime-l2)。
 
 ---

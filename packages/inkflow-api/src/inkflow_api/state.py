@@ -14,6 +14,7 @@ from inkflow_js_runtime import JsRuntime
 
 from inkflow_api.auth import generate_token
 from inkflow_api.services import DownloadTaskManager, LibraryService, SqliteHttpCache
+from inkflow_core.browser import BrowserProvider, BrowserRegistry
 from inkflow_core.config import Settings, get_settings
 from inkflow_core.models import BookSource
 from inkflow_core.paths import InkFlowPaths, get_paths
@@ -37,6 +38,7 @@ class AppState:
     db: Database
     cache: SqliteHttpCache | None
     js: JsRuntime | None
+    browser: BrowserProvider | None
     registry: SourceRegistry
     loader: SourceLoader
     aggregator: SearchAggregator
@@ -89,6 +91,8 @@ class AppState:
         await self.registry.aclose_all()
         if self.js is not None:
             await self.js.close()
+        if self.browser is not None:
+            await self.browser.close()
         self.db.dispose()
 
 
@@ -124,7 +128,8 @@ def build_state(
 
     # 注册内置书源类型（Legado 兼容层在此接入，Source 层本身不认识它）
     js = _build_js_runtime(resolved_settings)
-    _register_source_types(resolved_registry, resolved_loader, js)
+    browser = _build_browser(resolved_settings)
+    _register_source_types(resolved_registry, resolved_loader, js, browser)
     # 让全局请求配置（超时、并发上限、内网访问开关）作用到每个书源
     cache = _build_cache(resolved_settings, db)
     http_factory = _make_http_factory(resolved_settings, cache)
@@ -146,6 +151,7 @@ def build_state(
         db=db,
         cache=cache,
         js=js,
+        browser=browser,
         registry=resolved_registry,
         loader=resolved_loader,
         aggregator=SearchAggregator(
@@ -196,6 +202,7 @@ def _register_source_types(
     registry: SourceRegistry,
     loader: SourceLoader,
     js: JsRuntime | None,
+    browser: BrowserProvider | None,
 ) -> None:
     """注册内置书源类型。
 
@@ -212,7 +219,27 @@ def _register_source_types(
     except ImportError:  # pragma: no cover - 仅在精简部署时发生
         return
 
-    register_legado(registry, loader, js)
+    register_legado(registry, loader, js, browser)
+
+
+def _build_browser(settings: Settings) -> BrowserProvider | None:
+    """按配置构造浏览器引擎。
+
+    未启用时返回 ``None`` —— 此时带 ``webView`` 的规则会抛「未启用」，
+    而不是退回普通请求拿到没渲染过的页面。
+
+    **一个实例服务所有书源**：一个浏览器实例几百 MB，按书源起不现实。
+
+    引擎由外层注册（ADR-024）：core 不认识 Playwright，这里显式挂上去。
+    """
+    if not settings.browser.enabled:
+        return None
+
+    from inkflow_browser_playwright import register_playwright
+
+    registry = BrowserRegistry()
+    register_playwright(registry)
+    return registry.create(settings.browser)
 
 
 def _build_js_runtime(settings: Settings) -> JsRuntime | None:
