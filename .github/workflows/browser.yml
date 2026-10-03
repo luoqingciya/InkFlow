@@ -3,9 +3,28 @@ name: Browser
 # 真实浏览器测试。要下约 270MB，所以**不进日常 CI**（ADR-024 的 CI 分层）：
 # 日常只跑接口与桩，真实引擎在这里跑。
 #
-# 先只开手动触发 —— 跑几次看清耗时与稳定性，再决定要不要加 schedule。
+# 什么时候跑它 —— 三种触发各有各的用处：
+#
+# | 触发 | 抓什么 |
+# |---|---|
+# | 手动 | 排查时想单独跑一遍 |
+# | **改了浏览器相关代码** | 回归。日常 CI 把 browser 用例排除了，不这样接上的话**改了浏览器代码在 PR 阶段根本没验过** |
+# | **每天定时** | 环境漂移（runner 镜像 / 下载源变了）与偶发。代码没动，但外面的世界会动 |
+#
+# 耗时实测约 1 分钟（含下 271MB —— GitHub 的网快，缓存也帮得上）。
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - packages/inkflow-browser-playwright/**
+      - packages/inkflow-browser-electron/**
+      - packages/inkflow-core/src/inkflow_core/browser.py
+      - tests/browser/**
+      - desktop/src/main/browser-bridge.ts
+      - .github/workflows/browser.yml
+  schedule:
+    # 02:00（北京时间）。定时任务只在默认分支上跑。
+    - cron: "0 18 * * *"
 
 permissions:
   contents: read
