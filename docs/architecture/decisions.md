@@ -830,6 +830,26 @@ CLI 19 MB —— **13 倍量级**，内嵌进分发产物不现实。
 纯 CLI / 服务端没有。把引擎焊死在 core 里，等于替所有部署形态做了
 一个它们未必想要的选择。
 
+**接口（实现时细化）。** 本 ADR 原先列的是页面会话式
+（`open` / `navigate` / `evaluate` / `html` / `cookies` / `close`），
+落地时收成：
+
+```python
+async def start() -> None
+async def close() -> None
+async def fetch_html(url, *, js=None, timeout=None) -> str
+async def cookies() -> list[dict]
+```
+
+理由：Legado 侧的真实需求就是「给一个 URL，拿渲染后的 HTML」
+（`webView` 的语义），`webJs` 只是「加载后先跑一段脚本」。
+页面会话式接口会把页面生命周期管理推给每个调用方，而且每个引擎都要
+多实现一组 `open` / `navigate` / `html` 状态机 ——
+**接口面越大，两个引擎的行为越容易分叉**，而这正是这个接口要避免的事。
+
+`evaluate` 并入 `fetch_html(js=...)`：`webJs` 的用途是**改页面**然后取 HTML，
+不是取值。
+
 **2. 默认分发不带浏览器；首次启用时按需下载。**
 
 分发产物（后端 exe / CLI / 安装包）**体积不变**。用户第一次启用
