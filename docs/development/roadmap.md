@@ -134,8 +134,13 @@ Python (Legado 适配器)
   sidecar 用 `fs.readSync` 阻塞等响应
 - **网络请求回调 Python**：`java.ajax` 走反向 RPC 回 `HttpClient`，
   SSRF 防护 / 限速 / 缓存全部照旧生效
-- 宿主 API：`ajax` / `get` / `post`、`base64Encode/Decode`、`md5Encode` /
-  `md5Encode16`、`hexEncode/Decode`、`digestHex`、`timeFormat`、`log`
+- 宿主 API：
+  - 网络：`ajax`（GET）/ `post` / `ajaxAll`（**串行**，见下）
+  - 取值：`getString` —— 用规则从当前上下文取值，**走反向 RPC 复用 Python 编译器**
+  - 变量：`put` / `get` —— **书源级**变量，跨规则、跨请求共享（**`get` 是取变量，不是 HTTP GET**）
+  - 编码 / 摘要：`base64Encode/Decode`、`md5Encode` / `md5Encode16`、
+    `hexEncode/Decode`、`digestHex`
+  - 其它：`timeFormat`、`toNumChapter`（中文数字转阿拉伯数字）、`log`
 - 三层限制：进程内存（`--max-old-space-size`）、沙箱超时、
   Python 兜底超时（超时即丢弃进程）
 - 未启用时**明确报错并把解法写进 message**，不静默返回空
@@ -150,9 +155,17 @@ Python (Legado 适配器)
 ### 尚未覆盖的 L2 细节
 
 - `<js>` 标签写法（当前只支持 `@js:` 前缀）
-- DOM 操作（Legado 的 `org.jsoup` 映射）
+- DOM 操作（Legado 的 `org.jsoup` 映射）：`java.getElements` / `java.getStringList`
+- 加解密：`java.aesBase64DecodeToString` / `java.base64DecodeToByteArray`
 - cookie 管理（`java.getCookie` / `setCookie`）
 - `java.getWebViewUA` 等与浏览器环境相关的 API
+
+### 已知限制
+
+- `java.ajaxAll` 是**串行**实现 —— 语义与 Legado 一致，但没有并发收益。
+  sidecar 是同步阻塞模型，一次只能等一条响应；要并发需 Python 侧支持
+  同时挂起多个 host 请求（当前协议是一请求一响应）。真实书源里只用 4 处，
+  **先保证正确，暂不优化**。取舍见 [ADR-022](../architecture/decisions.md)。
 
 ---
 
@@ -529,6 +542,42 @@ $ uv run mypy .                → Success: no issues found in 96 source files
 
 **剩余 5.50%** 未覆盖，多是书源本身写得不规范（`?` 在属性值里、
 `!` 在开头、模板嵌在中间）。边际收益递减，**暂时不再逐条追**。
+
+### 2026-10-03 · 补齐宿主 API（M3 收尾）
+
+上一节的真实书源体检顺带统计了宿主 API 的调用频次，暴露了 M3 的缺口：
+**最常用的 `java.getString`（75 次）根本没实现**，`java.put`（27 次）也没有。
+—— 又是「mock 书源证明不了真实覆盖度」的一个例证。
+
+```text
+$ uv run pytest -q
+275 passed          （254 → 275）
+
+$ uv run ruff check .          → All checks passed!
+$ uv run mypy .                → Success: no issues found in 96 source files
+```
+
+补齐 / 修正的宿主 API：
+
+| API | 语义 | 实现要点 |
+|---|---|---|
+| `java.getString(rule)` | 用规则从**当前上下文**取值 | **反向 RPC 回 Python 求值**，复用编译器（不在 JS 侧重造一套） |
+| `java.put` / `java.get(key)` | **书源级**变量 | 存 adapter 实例 → 按书源天然隔离，跨规则 / 跨请求共享 |
+| `java.ajaxAll(urls)` | 批量请求 | 返回 `[{body: () => text}]`；**串行**（见「已知限制」） |
+| `java.toNumChapter(text)` | 中文数字转阿拉伯数字 | 「一千零二十四」→ 1024 |
+
+**踩到的两个坑（都已修）**：
+
+1. **`_variables` 字段名撞上同名方法** —— adapter 里本就有个
+   `_variables(**extra)` **方法**（模板变量），新加的实例字段把它覆盖了 →
+   `TypeError: 'dict' object is not callable`，**连原有测试都挂**。
+   改名 `_js_variables`。
+2. **`java.get` 语义冲突** —— 我原先写的 `get(url, headers)` 是 HTTP GET，
+   但 **Legado 里 `java.get` 是取变量**（HTTP GET 用 `java.ajax`）。
+   同名导致 `java.get('bid')` 走进了网络分支，报「不支持的协议 ''」。
+   错误的 `get(url, headers)` 已删除。
+
+取舍见 [ADR-022](../architecture/decisions.md)。`tests/source/test_legado_js.py` 9 → 18 项。
 
 ### 尚未验证
 
