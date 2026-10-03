@@ -176,3 +176,129 @@ def test_describe_exposes_structure(compiler: LegadoRuleCompiler) -> None:
     assert described["selectors"] == [".a", "b"]
     assert described["extract"] == "href"
     assert described["replacements"] == [{"pattern": "x", "replacement": "y"}]
+
+
+# ---------------------------------------------------------------- 真实书源语法
+#
+# 下面这些写法都是从一份 1363 条的真实书源集合里统计出来的 ——
+# 每一条都对应一个「不认就会报选择器语法错误」的缺口。
+
+
+def test_implicit_jsonpath_without_prefix(compiler: LegadoRuleCompiler) -> None:
+    """`$.xxx` 不写 `@json:` 也是 JSONPath。
+
+    Legado 这么写很常见（样本里 1400+ 条），当 CSS 解析会直接语法错误。
+    """
+    rule = compiler.compile("$.result[*]")
+
+    assert rule.mode is RuleMode.JSON
+    assert rule.json_path == "$.result[*]"
+
+
+def test_implicit_jsonpath_does_not_eat_css(compiler: LegadoRuleCompiler) -> None:
+    """普通 CSS 选择器不受影响 —— 只有 `$` 开头才当 JSONPath。"""
+    assert compiler.compile("class.book-item@tag.a").mode is RuleMode.CSS
+
+
+def test_bang_index_suffix(compiler: LegadoRuleCompiler) -> None:
+    """`!0` 取第 N 个（样本里 400+ 条）。
+
+    下标留在选择器串里，由 `select_nodes` 在求值时拆 —— 这样 `Rule`
+    不必为每个下标多存一个字段。
+    """
+    rule = compiler.compile("class.grid@tag.tr!0@text")
+
+    assert rule.selectors == [".grid", "tr!0"]
+    assert rule.extract == "text"
+
+
+def test_dot_index_suffix(compiler: LegadoRuleCompiler) -> None:
+    """`.0` 也是下标 —— CSS 类名不可能是纯数字，所以没有歧义。"""
+    rule = compiler.compile(".book-metas.0@text")
+
+    assert rule.selectors == [".book-metas.0"]
+    assert rule.extract == "text"
+
+
+def test_template_rule_is_text_mode(compiler: LegadoRuleCompiler) -> None:
+    """`{{...}}` 是模板不是选择器。"""
+    rule = compiler.compile("{{$.bookId}}")
+
+    assert rule.mode is RuleMode.TEXT
+
+
+def test_template_with_trailing_text(compiler: LegadoRuleCompiler) -> None:
+    rule = compiler.compile("{{$.bookId}}&_sv=v2")
+
+    assert rule.mode is RuleMode.TEXT
+
+
+def _index_doc() -> object:
+    from inkflow_source.parsers import html as html_parser
+
+    return html_parser.parse_html(
+        '<div class="grid"><tr><td>一</td></tr><tr><td>二</td></tr><tr><td>三</td></tr></div>'
+    )
+
+
+def test_bang_index_picks_nth(compiler: LegadoRuleCompiler) -> None:
+    """`!N` 真的取到第 N 个 —— 只测「编译没报错」是不够的。"""
+    context = RuleContext(doc=_index_doc())
+
+    assert compiler.compile("class.grid@tag.tr!0@text").evaluate(context) == ["一"]
+    assert compiler.compile("class.grid@tag.tr!2@text").evaluate(context) == ["三"]
+
+
+def test_index_out_of_range_is_empty(compiler: LegadoRuleCompiler) -> None:
+    """越界返回空列表，不抛异常 —— 书源写错下标不该让整章下载失败。"""
+    context = RuleContext(doc=_index_doc())
+
+    assert compiler.compile("class.grid@tag.tr!9@text").evaluate(context) == []
+
+
+def test_negative_index_counts_from_end(compiler: LegadoRuleCompiler) -> None:
+    """`.-1` 是倒数第一个（样本里出现过 `ul.-1@li`）。"""
+    context = RuleContext(doc=_index_doc())
+
+    assert compiler.compile("class.grid@tag.tr!-1@text").evaluate(context) == ["三"]
+
+
+def test_index_range_slice(compiler: LegadoRuleCompiler) -> None:
+    """`!0:2` 取前两个。"""
+    context = RuleContext(doc=_index_doc())
+
+    assert compiler.compile("class.grid@tag.tr!0:2@text").evaluate(context) == ["一", "二"]
+
+
+def test_template_renders_json_path(compiler: LegadoRuleCompiler) -> None:
+    """`{{$.xxx}}` 从当前 JSON 数据取值。"""
+    rule = compiler.compile("{{$.bookId}}")
+    context = RuleContext(data={"bookId": "12345"})
+
+    assert rule.evaluate(context) == ["12345"]
+
+
+def test_template_keeps_unknown_key(compiler: LegadoRuleCompiler) -> None:
+    """变量不存在时保留原文 —— 便于定位书源里写错的变量名。"""
+    rule = compiler.compile("{{$.missing}}")
+
+    assert rule.evaluate(RuleContext(data={"bookId": "1"})) == ["{{$.missing}}"]
+
+
+def test_template_with_literal_text(compiler: LegadoRuleCompiler) -> None:
+    rule = compiler.compile("id={{$.bookId}}&v=2")
+
+    assert rule.evaluate(RuleContext(data={"bookId": "9"})) == ["id=9&v=2"]
+
+
+def test_unquoted_attr_selector_is_tolerated(compiler: LegadoRuleCompiler) -> None:
+    """`meta[property=og:novel:author]` 这种没加引号的写法要能跑。
+
+    书源里很常见，Legado（Jsoup）容忍；cssselect 严格，`:` 会被当伪类。
+    """
+    from inkflow_source.parsers import html as html_parser
+
+    doc = html_parser.parse_html('<meta property="og:novel:author" content="刘慈欣" />')
+    rule = compiler.compile("meta[property=og:novel:author]@content")
+
+    assert rule.evaluate(RuleContext(doc=doc)) == ["刘慈欣"]

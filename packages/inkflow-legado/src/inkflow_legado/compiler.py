@@ -131,7 +131,18 @@ def _parse_single(text: str) -> Rule:
 
     # 2. 剥离模式前缀
     body, forced_mode = _strip_mode_prefix(body.strip())
+    # Legado 里 ``$.xxx`` / ``$[..]`` 不写 ``@json:`` 也当 JSONPath ——
+    # 真实书源里很常见（1000+ 书源的样本里 1400 多条这么写）。
+    # 不认的话会被当 CSS 选择器，报 "Expected selector, got <DELIM '$'>"。
+    if forced_mode is None and body.startswith("$"):
+        forced_mode = RuleMode.JSON
     replacements = _parse_replacements(replacement_text)
+
+    # 2.5 含 ``{{...}}`` 的是模板而不是选择器 —— 真实书源里常见
+    #     （比如 bookUrl 用 ``{{$.bookId}}`` 拼地址）。CSS 选择器里不会
+    #     出现 ``{{``，所以「包含」就足以判定。
+    if "{{" in body:
+        return Rule(raw=raw, mode=RuleMode.TEXT, selectors=[body], replacements=replacements)
 
     # 3. 强制 JS 模式：编译成功，执行与否由运行时决定
     if forced_mode is RuleMode.JS:
