@@ -39,19 +39,131 @@ export function createJavaApi({ hostRequest, log }) {
   };
 
   return {
+    // ---------------------------------------------------------------- 取值
+
+    /**
+     * Legado：`java.getString(rule)` —— 用**规则**从当前页面取值。
+     *
+     * 这里的「当前页面」是 Python 侧求值时的上下文（HTML 或 JSON）。
+     * 规则求值的能力在 Python（lxml / JSONPath），所以这一趟要走反向 RPC，
+     * 而不是在 sidecar 里重造一套。
+     *
+     * @param {string} rule 选择器或 JSONPath（支持 Legado 的 `!N` 下标等写法）。
+     * @param {boolean} [isRule] Legado 的第二个参数，传 false 表示按字面量处理。
+     */
+    getString(rule, isRule) {
+      const response = hostRequest({
+        op: 'getString',
+        rule: String(rule),
+        isRule: isRule === undefined ? true : Boolean(isRule)
+      });
+      if (!response || response.ok !== true) {
+        const message = response && response.error ? response.error : '取值失败';
+        throw new Error(`java.getString 失败：${message}`);
+      }
+      return response.value ?? '';
+    },
+
+    // ------------------------------------------------------------ 书源变量
+
+    /**
+     * Legado：`java.put(key, value)` —— 存一个**书源级**变量。
+     *
+     * 生命周期跟着书源走，跨规则、跨请求都在 —— 书源常用它把 tocUrl
+     * 里算出来的 bookId 传给 chapterUrl。返回值是写入的值，便于链式写。
+     */
+    put(key, value) {
+      const text = value === undefined || value === null ? '' : String(value);
+      hostRequest({ op: 'put', key: String(key), value: text });
+      return text;
+    },
+
+    /** Legado：`java.get(key)` —— 取书源级变量。 */
+    get(key) {
+      const response = hostRequest({ op: 'get', key: String(key) });
+      return response && response.value !== undefined && response.value !== null
+        ? String(response.value)
+        : '';
+    },
+
     // ---------------------------------------------------------------- 网络
 
-    /** Legado：`java.ajax(url)` —— 同步返回响应体。 */
+    /** Legado：`java.ajax(url)` —— 同步返回响应体（这就是 GET）。 */
     ajax(url) {
       return fetchLike('GET', url);
     },
 
-    get(url, headers) {
-      return fetchLike('GET', url, null, headers);
-    },
-
     post(url, body, headers) {
       return fetchLike('POST', url, body, headers);
+    },
+
+    /**
+     * Legado：`java.ajaxAll(urls)` —— 批量请求，返回数组。
+     *
+     * 每个元素有 `body()` 方法取响应体（Legado 的用法是
+     * `java.ajaxAll(list).map(x => x.body())`）。
+     *
+     * **当前是串行实现的**：sidecar 是同步阻塞模型，一次只能等一条响应。
+     * 语义与 Legado 一致，但没有并发收益。真实书源里这个 API 用得不多
+     * （样本里 4 处），先保证正确。
+     */
+    ajaxAll(urls) {
+      const list = Array.isArray(urls) ? urls : [urls];
+      return list.map((url) => {
+        const text = fetchLike('GET', url);
+        return { body: () => text, url: String(url) };
+      });
+    },
+
+    // ---------------------------------------------------------------- 其它
+
+    /**
+     * Legado：`java.toNumChapter(text)` —— 中文数字转阿拉伯数字。
+     *
+     * 书源用它把「第一千零二十四章」这类章节名转成可排序的数字。
+     *
+     * 算法分两段：`万` 结算一整段并累加，`十/百/千` 在当前段内累加。
+     * 「十二」= 12（`十` 前面没有数字时按 1 算）。
+     */
+    toNumChapter(text) {
+      const raw = String(text ?? '').trim();
+      if (!raw) {
+        return '';
+      }
+      if (/^-?\d+$/.test(raw)) {
+        return Number(raw);
+      }
+
+      const digits = {
+        零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4,
+        五: 5, 六: 6, 七: 7, 八: 8, 九: 9
+      };
+      const units = { 十: 10, 百: 100, 千: 1000 };
+
+      let total = 0; // 「万」之前已结算的部分
+      let section = 0; // 当前段
+      let current = 0; // 待结算的个位
+
+      for (const char of raw) {
+        if (char in digits) {
+          current = digits[char];
+          continue;
+        }
+        if (char === '万') {
+          section = (section + current) * 10000;
+          total += section;
+          section = 0;
+          current = 0;
+          continue;
+        }
+        if (char in units) {
+          section += (current || 1) * units[char];
+          current = 0;
+        }
+      }
+
+      const value = total + section + current;
+      return value === 0 ? '' : value;
     },
 
     // ---------------------------------------------------------------- 编码
