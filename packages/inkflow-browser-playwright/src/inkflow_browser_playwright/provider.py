@@ -16,6 +16,7 @@ from inkflow_core.browser import (
     BrowserRegistry,
     BrowserUnavailableError,
 )
+from inkflow_core.paths import is_frozen
 
 if TYPE_CHECKING:  # pragma: no cover
     from inkflow_core.config import BrowserConfig
@@ -45,7 +46,8 @@ def install_hint(config: BrowserConfig | None = None, *, target: str = BROWSER_T
     """
     return (
         f"Playwright 浏览器未安装。执行下面的命令装上（约 270MB）：\n"
-        f"  python -m playwright install {target}\n"
+        f"  inkflow browser install\n"
+        f"（或直接：python -m playwright install {target}）\n"
         f"浏览器会装到：{browsers_dir(config)}"
     )
 
@@ -55,6 +57,13 @@ def _load_playwright() -> Any:
     try:
         from playwright.async_api import async_playwright
     except ImportError as exc:
+        if is_frozen():
+            raise BrowserUnavailableError(
+                "这个构建（单文件可执行程序）没有带浏览器引擎，"
+                "需要浏览器渲染的书源在这里不可用。\n"
+                "用 pip / uv 安装的环境才支持：\n"
+                '  pip install "inkflow-browser-playwright[playwright]"'
+            ) from exc
         raise BrowserUnavailableError(
             '未安装 playwright。执行：\n  pip install "inkflow-browser-playwright[playwright]"'
         ) from exc

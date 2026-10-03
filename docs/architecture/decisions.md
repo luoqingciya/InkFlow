@@ -859,6 +859,16 @@ async def cookies() -> list[dict]
 是拿多数人的代价补贴少数人**。按需下载把这个代价交给真正需要它的人 ——
 这也正是 Playwright 自己的模型（`playwright install` 是独立步骤）。
 
+**冻结构建里下载不了（实现时发现，2026-10-03）。** 单文件 exe 里既没有
+playwright（它是可选 extra，Release 只跑 `uv sync --all-packages`）也没有
+pip，所以「首次启用时下载」在**发布版里跑不起来**。
+
+处理：`install_browser()` 检测到冻结构建会**明确报错并说明替代方案**，
+而不是给一条用户执行不了的 `pip install`。
+
+要在桌面端真正支持 L3，走的是下面第 4 条 —— 桌面端本来就带 Chromium
+（Electron），不必再多下 376 MB。
+
 **3. 未安装时明确报错，并把解法写进 message。**
 
 与 `[js] enabled = false` 的处理一致：抛明确错误，message 写清
@@ -867,8 +877,12 @@ async def cookies() -> list[dict]
 
 **4. 桌面端将来可以额外注册一个 Electron 实现，但不在 M4 做。**
 
-接口留好了位置。跨进程驱动 Electron 需要另做一套协议，而按需下载的
-Playwright 已经覆盖桌面场景 —— 等有实际收益（比如避免重复下载 Chromium）再说。
+接口留好了位置。跨进程驱动 Electron 需要另做一套协议。
+
+> **2026-10-03 补注**：上面「按需下载的 Playwright 已经覆盖桌面场景」这句
+> 站不住了 —— 桌面端分发的是**冻结构建**，而冻结构建装不了 Playwright
+> （见决策 2 的补注）。所以 Electron 实现不是「将来有收益再说」，
+> 而是**桌面端支持 L3 的必经之路**。M4 之后要重排这条的优先级。
 
 **后果**
 

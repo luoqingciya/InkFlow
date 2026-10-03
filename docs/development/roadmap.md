@@ -207,8 +207,13 @@ Python (Legado 适配器)
 | Playwright 引擎包（`packages/inkflow-browser-playwright`） | ✅ |
 | `webView`（URL 选项形式）接到 Legado 适配器 | ✅ |
 | `java.webView(...)` 宿主 API（JS 规则里调的那种） | ✅ |
-| 首次启用时的下载引导（API / CLI 里提示并触发安装） | ⬜ |
+| 首次启用时的下载引导（API + CLI） | ✅ |
 | 真实浏览器用例的定时跑（先手动触发，看清成本再定） | ⬜ |
+| **桌面端 L3 —— Electron 实现** | ⬜ |
+
+**⚠️ 冻结构建装不了 Playwright**（实现下载引导时发现）：单文件 exe 里既没有
+playwright（可选 extra）也没有 pip。所以桌面端（分发的是冻结产物）**要支持 L3
+只能走 Electron 实现** —— 桌面端本来就带 Chromium。详见 ADR-024 的补注。
 
 `config.toml` 里的 `[browser]` 段已有 `enabled` / `engine` / `headless` /
 `timeout` / `install_dir`。

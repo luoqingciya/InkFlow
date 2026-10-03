@@ -21,6 +21,8 @@ from inkflow_cli.output import (
     console,
     print_book_detail,
     print_books,
+    print_browser_install,
+    print_browser_status,
     print_chapters,
     print_error,
     print_export_result,
@@ -47,10 +49,12 @@ app = typer.Typer(
 book_app = typer.Typer(help="书籍：详情、目录、正文", no_args_is_help=True)
 task_app = typer.Typer(help="下载任务：查看、启动、暂停、恢复、取消", no_args_is_help=True)
 sources_app = typer.Typer(help="书源：列表、导入、测试、删除", no_args_is_help=True)
+browser_app = typer.Typer(help="浏览器运行时：查看状态、按需下载", no_args_is_help=True)
 
 app.add_typer(book_app, name="book")
 app.add_typer(task_app, name="task")
 app.add_typer(sources_app, name="sources")
+app.add_typer(browser_app, name="browser")
 
 
 @dataclass
@@ -148,6 +152,37 @@ def info(ctx: typer.Context) -> None:
             return await client.system_info()
 
     _emit(ctx, _run(ctx, run), print_system_info)
+
+
+# ================================================================ 浏览器
+
+
+@browser_app.command("status")
+def browser_status(ctx: typer.Context) -> None:
+    """查看浏览器运行时状态（是否启用、浏览器装了没）。"""
+    cli_ctx: CliContext = ctx.obj
+
+    async def run() -> Any:
+        async with InkFlowClient(cli_ctx.location) as client:
+            return await client.browser_status()
+
+    _emit(ctx, _run(ctx, run), print_browser_status)
+
+
+@browser_app.command("install")
+def browser_install(ctx: typer.Context) -> None:
+    """下载浏览器（约 270MB，要等几分钟）。
+
+    浏览器默认不随分发（ADR-024）—— 只有需要浏览器渲染的书源用得到它。
+    """
+    cli_ctx: CliContext = ctx.obj
+
+    async def run() -> Any:
+        async with InkFlowClient(cli_ctx.location) as client:
+            return await client.browser_install()
+
+    console.print("[yellow]正在下载浏览器（约 270MB），请稍候…[/]")
+    _emit(ctx, _run(ctx, run), print_browser_install)
 
 
 # ================================================================ 搜索

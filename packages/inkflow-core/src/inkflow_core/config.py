@@ -156,6 +156,9 @@ class BrowserConfig(BaseModel):
     #: 浏览器安装目录。留空表示用 ``<数据目录>/browsers``。
     #: 多份安装想共享同一份浏览器时指向同一个目录。
     install_dir: str = ""
+    #: 浏览器下载源。留空表示用 playwright 官方 CDN（它自带多级 fallback）。
+    #: 官方源不通时填镜像地址 —— 只在下载那一步生效。
+    download_host: str = ""
 
 
 class LogConfig(BaseModel):

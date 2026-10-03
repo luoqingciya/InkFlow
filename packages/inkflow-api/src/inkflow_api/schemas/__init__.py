@@ -22,6 +22,8 @@ from inkflow_core.models import (
 __all__ = [
     "BookDetailResponse",
     "BookListResponse",
+    "BrowserInstallResponse",
+    "BrowserStatusResponse",
     "CacheStatsResponse",
     "ChapterContentResponse",
     "ChapterListResponse",
@@ -307,3 +309,24 @@ class SettingsUpdateRequest(BaseModel):
     download_timeout: float | None = Field(default=None, gt=0)
     cache_enabled: bool | None = None
     source_allow_private_network: bool | None = None
+
+
+class BrowserStatusResponse(BaseModel):
+    """``GET /api/v1/browser/status`` —— 浏览器运行时状态。"""
+
+    enabled: bool
+    engine: str
+    install_dir: str
+    installed: bool
+    #: 引擎包是否可用（冻结构建里可能是 False）。
+    engine_available: bool
+    #: 不可用 / 未安装时给用户看的话。可用且已装时为 None。
+    message: str | None = None
+
+
+class BrowserInstallResponse(BaseModel):
+    """``POST /api/v1/browser/install`` 的结果。"""
+
+    installed: bool
+    install_dir: str
+    message: str
