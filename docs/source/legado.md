@@ -89,6 +89,28 @@ class.a@tag.a@text||tag.b@text     → 第一条无结果时用第二条
 
 ---
 
+### URL 选项
+
+URL 规则可以追加一段 JSON 描述请求方式，Legado 用**宽松**语法写：
+
+```text
+/search,{"method":"POST","body":"key={{key}}"}
+https://x/a,{'webView': true}          ← 单引号，Gson 能读，标准 json 读不了
+```
+
+支持 `method` / `body` / `headers` / `webView` / `charset` 等。
+
+解析要点（都在 `inkflow_legado/urloptions.py`）：
+
+- **宽松** —— 单引号、小写布尔、不带引号的键都要认。真实书源大量这么写，
+  只按标准 JSON 解析会让整段选项留在 URL 里，请求打到一个不存在的地址上。
+- **从右往左找切分点** —— 选项 JSON 内部本来就有逗号
+  （`{"method":"POST","body":"..."}`），取最后一个逗号会切错。
+- **解析不出来就返回原文** —— 宁可不识别，也不要猜错 URL。
+
+带 `webView` 的规则走浏览器（L3）；未启用浏览器时**明确报错**，
+不退回普通请求 —— 退回会拿到没渲染过的页面，看起来像「书源规则失效」。
+
 ## 字段映射
 
 | Legado 字段 | InkFlow 模型 |
@@ -138,11 +160,10 @@ class.a@tag.a@text||tag.b@text     → 第一条无结果时用第二条
 
 | 能力 | 等级 | 说明 |
 |---|---|---|
-| JS 规则（`@js:` / `<js>`） | L2 | 需要独立 JS 沙箱运行时 |
 | 登录态 / Cookie 注入 | L3 | 需要浏览器上下文 |
-| 浏览器渲染（`webView`） | L3 | 需要 Chromium 运行时 |
+| `java.webView(...)` 宿主 API | L3 | URL 选项形式的 `webView` 已支持，这个还没有 |
+| `webJs` 的完整语义 | L3 | 目前按「页面加载后在浏览器里跑这段脚本」处理 |
 | `ruleSearch.init` / `ruleBookInfo.init` | — | 详情页预处理规则 |
-| 复杂的 URL 选项（POST body 模板） | 部分 | `url,{json}` 的基础形式已支持 |
 
 遇到未支持的能力时，适配器会**明确报错并指出所需等级**，而不是静默降级。
 

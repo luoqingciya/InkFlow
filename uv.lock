@@ -339,6 +339,7 @@ name = "inkflow-api"
 source = { editable = "packages/inkflow-api" }
 dependencies = [
     { name = "fastapi" },
+    { name = "inkflow-browser-playwright" },
     { name = "inkflow-core" },
     { name = "inkflow-export" },
     { name = "inkflow-legado" },
@@ -350,6 +351,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "inkflow-browser-playwright", editable = "packages/inkflow-browser-playwright" },
     { name = "inkflow-core", editable = "packages/inkflow-core" },
     { name = "inkflow-export", editable = "packages/inkflow-export" },
     { name = "inkflow-legado", editable = "packages/inkflow-legado" },

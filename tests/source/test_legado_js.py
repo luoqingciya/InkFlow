@@ -11,10 +11,10 @@ from __future__ import annotations
 import json
 
 import pytest
-from inkflow_js_runtime import JsRuntime, find_node
 
 from inkflow_core.config import JsConfig, Settings
 from inkflow_core.errors import SourceError
+from inkflow_js_runtime import JsRuntime, find_node
 from inkflow_legado import LegadoBookSource, LegadoSourceAdapter
 from inkflow_legado.rules import RuleContext
 from tests.sources_data import legado_source

@@ -84,6 +84,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
+# 全项目的一等公民包都列在这里。漏掉的会被当成第三方 ——
+# 表现是 import 分组里多一个空行，而且同一批导入会被拆成两组。
 known-first-party = [
     "inkflow_core",
     "inkflow_source",
@@ -91,6 +93,8 @@ known-first-party = [
     "inkflow_api",
     "inkflow_cli",
     "inkflow_export",
+    "inkflow_js_runtime",
+    "inkflow_browser_playwright",
 ]
 
 [tool.ruff.lint.per-file-ignores]

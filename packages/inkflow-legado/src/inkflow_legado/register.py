@@ -14,8 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from inkflow_js_runtime import JsRuntime
-
+from inkflow_core.browser import BrowserProvider
 from inkflow_core.errors import ErrorCode, SourceError
 from inkflow_core.models import (
     BookSource,
@@ -26,6 +25,7 @@ from inkflow_core.models import (
     SourceType,
 )
 from inkflow_core.utils import stable_id
+from inkflow_js_runtime import JsRuntime
 from inkflow_legado.adapter import LegadoSourceAdapter
 from inkflow_legado.schema import LegadoBookSource
 from inkflow_source.http import HttpClient
@@ -126,6 +126,7 @@ def register_legado(
     registry: SourceRegistry | None = None,
     loader: SourceLoader | None = None,
     js: JsRuntime | None = None,
+    browser: BrowserProvider | None = None,
 ) -> None:
     """把 Legado 工厂与格式解析器注册到 Source Engine。
 
@@ -137,10 +138,13 @@ def register_legado(
         js: 共享的 JS 运行时。**一个进程服务所有书源** —— 每个书源起一个
             Node 进程太浪费（每个约 30MB），而且没必要。省略时 ``@js:``
             规则会报「未启用」。
+        browser: 共享的浏览器引擎。同样是一个进程服务所有书源 ——
+            一个浏览器实例几百 MB，按书源起不现实。省略时带 ``webView``
+            的规则会报「未启用」。
     """
 
     def factory(source: BookSource, http: HttpClient | None) -> LegadoSourceAdapter:
-        return LegadoSourceAdapter.from_source(source, http, js)
+        return LegadoSourceAdapter.from_source(source, http, js, browser)
 
     target_registry = registry if registry is not None else default_registry
     target_loader = loader if loader is not None else default_loader

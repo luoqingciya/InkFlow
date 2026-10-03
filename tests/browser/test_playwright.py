@@ -14,6 +14,7 @@ import os
 from collections.abc import AsyncGenerator
 
 import pytest
+
 from inkflow_browser_playwright import (
     BROWSER_TARGET,
     PlaywrightBrowserProvider,
@@ -21,7 +22,6 @@ from inkflow_browser_playwright import (
     install_hint,
     register_playwright,
 )
-
 from inkflow_core.browser import BrowserRegistry, BrowserUnavailableError
 from inkflow_core.config import BrowserConfig
 from tests.browser import contract

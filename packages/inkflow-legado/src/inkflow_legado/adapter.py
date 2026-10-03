@@ -8,12 +8,10 @@ Node sidecar 执行；未启用时抛 ``SOURCE_INVALID`` 并给出提示 ——
 
 from __future__ import annotations
 
-import json
 from typing import Any
 from urllib.parse import urljoin
 
-from inkflow_js_runtime import JsRuntime, JsRuntimeError
-
+from inkflow_core.browser import BrowserError, BrowserProvider, BrowserUnavailableError
 from inkflow_core.errors import ErrorCode, SourceError
 from inkflow_core.models import (
     BookResult,
@@ -21,35 +19,17 @@ from inkflow_core.models import (
     ChapterResult,
     ContentResult,
 )
+from inkflow_js_runtime import JsRuntime, JsRuntimeError
 from inkflow_legado.compiler import LegadoRuleCompiler, render_legado_template
 from inkflow_legado.rules import Rule, RuleContext, RuleMode
 from inkflow_legado.schema import LegadoBookSource
+from inkflow_legado.urloptions import split_url_options
 from inkflow_source.adapter import BaseSourceAdapter
 from inkflow_source.http import HttpClient
 from inkflow_source.normalizer import ContentNormalizer
 from inkflow_source.parsers import html as html_parser
 
 __all__ = ["LegadoSourceAdapter", "split_url_options"]
-
-
-def split_url_options(text: str) -> tuple[str, dict[str, Any]]:
-    """拆分 Legado 的 ``url,{json}`` 写法。
-
-    Legado 允许在 URL 后面追加一段 JSON 来描述请求方法、请求体等：
-
-        ``/search,{"method":"POST","body":"key={{key}}"}``
-    """
-    if "," not in text:
-        return text, {}
-    url, _, options = text.rpartition(",")
-    options = options.strip()
-    if not options.startswith("{"):
-        return text, {}
-    try:
-        parsed = json.loads(options)
-    except json.JSONDecodeError:
-        return text, {}
-    return url, parsed if isinstance(parsed, dict) else {}
 
 
 class LegadoSourceAdapter(BaseSourceAdapter):
@@ -67,10 +47,14 @@ class LegadoSourceAdapter(BaseSourceAdapter):
         definition: LegadoBookSource,
         http: HttpClient | None = None,
         js: JsRuntime | None = None,
+        browser: BrowserProvider | None = None,
     ) -> None:
         super().__init__(source, http)
         self.definition = definition
         self.js = js
+        #: 共享的浏览器引擎（``[browser] enabled = true`` 时由装配层注入）。
+        #: 只有带 ``webView`` 选项的规则会用到它。
+        self.browser = browser
         self.compiler = LegadoRuleCompiler()
         self._normalizer = ContentNormalizer()
 
@@ -131,6 +115,7 @@ class LegadoSourceAdapter(BaseSourceAdapter):
         source: BookSource,
         http: HttpClient | None = None,
         js: JsRuntime | None = None,
+        browser: BrowserProvider | None = None,
     ) -> LegadoSourceAdapter:
         """从已入库的书源定义构建适配器。
 
@@ -138,6 +123,8 @@ class LegadoSourceAdapter(BaseSourceAdapter):
             source: 书源定义。
             http: 由注册表注入的 HTTP 客户端；省略时按书源配置惰性创建。
             js: 共享的 JS 运行时（``[js] enabled = true`` 时由装配层注入）。
+            browser: 共享的浏览器引擎（``[browser] enabled = true`` 时注入）。
+                省略时，带 ``webView`` 的规则会**明确报错**而不是退回普通请求。
         """
         try:
             definition = LegadoBookSource.model_validate(source.raw)
@@ -147,7 +134,7 @@ class LegadoSourceAdapter(BaseSourceAdapter):
                 code=ErrorCode.SOURCE_INVALID,
                 details={"source_id": source.id},
             ) from exc
-        return cls(source, definition, http, js)
+        return cls(source, definition, http, js, browser)
 
     # -- 请求辅助 ----------------------------------------------------------
 
@@ -187,15 +174,25 @@ class LegadoSourceAdapter(BaseSourceAdapter):
         *,
         method: str | None = None,
         data: Any = None,
+        web_js: str | None = None,
         **variables: Any,
     ) -> tuple[str, Any]:
         """请求并解析页面，返回 ``(html_text, doc)``。
+
+        Args:
+            web_js: 页面加载后要在浏览器里执行的脚本（Legado 的 ``webJs``）。
 
         Returns:
             正文文本与解析后的 DOM。
         """
         url, options = split_url_options(url_template)
         resolved = self._resolve_url(url, **variables)
+
+        # 带 webView 选项、或这一页有 webJs 时，必须走浏览器：
+        # 内容要等页面脚本跑完才存在，普通 GET 拿到的是空壳。
+        if options.get("webView") or web_js:
+            return await self._fetch_via_browser(resolved, js=web_js)
+
         http_method = method or str(options.get("method", "GET")).upper()
 
         body = data if data is not None else options.get("body")
@@ -223,6 +220,45 @@ class LegadoSourceAdapter(BaseSourceAdapter):
             )
         doc = html_parser.parse_html(response.text, base_url=response.url)
         return response.text, doc
+
+    async def _fetch_via_browser(self, url: str, *, js: str | None = None) -> tuple[str, Any]:
+        """用浏览器加载页面，返回 ``(html_text, doc)``。
+
+        Raises:
+            SourceError: 浏览器不可用或加载失败。
+
+                **明确报错，不退回普通请求** —— 退回会拿到没渲染过的页面，
+                看起来像「书源规则失效」，把配置问题伪装成解析问题。
+        """
+        if self.browser is None:
+            raise SourceError(
+                "该书源需要浏览器渲染，但浏览器运行时未启用。\n"
+                "在 config.toml 的 [browser] 段设置 enabled = true 后重启服务。",
+                code=ErrorCode.SOURCE_EXECUTION_ERROR,
+                details={
+                    "url": url,
+                    "source_id": self.source.id,
+                    "hint": "config.toml 的 [browser] 段设置 enabled = true",
+                },
+            )
+
+        try:
+            await self.browser.start()
+            text = await self.browser.fetch_html(url, js=js)
+        except BrowserUnavailableError as exc:
+            raise SourceError(
+                f"浏览器运行时不可用：{exc}",
+                code=ErrorCode.SOURCE_EXECUTION_ERROR,
+                details={"url": url, "source_id": self.source.id, "kind": exc.kind},
+            ) from exc
+        except BrowserError as exc:
+            raise SourceError(
+                f"浏览器加载失败：{exc}",
+                code=ErrorCode.SOURCE_EXECUTION_ERROR,
+                details={"url": url, "source_id": self.source.id, "kind": exc.kind},
+            ) from exc
+
+        return text, html_parser.parse_html(text, base_url=url)
 
     # -- 搜索 --------------------------------------------------------------
 
@@ -355,7 +391,11 @@ class LegadoSourceAdapter(BaseSourceAdapter):
                 break
             visited.add(current)
 
-            _, doc = await self._fetch(current, chapterUrl=current)
+            _, doc = await self._fetch(
+                current,
+                chapterUrl=current,
+                web_js=self.definition.ruleContent.webJs or None,
+            )
             context = RuleContext(doc=doc, base_url=current)
 
             value = self._rule_content.evaluate_one(context)
