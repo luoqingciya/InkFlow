@@ -103,7 +103,109 @@ inkflow-cli
 
 ---
 
-## 快速开始
+## 下载安装
+
+如果你只是想**用**这个软件，看这一节就够了 —— 不需要装 Python，也不需要
+懂命令行。源码运行的说明在后面的[从源码跑](#从源码跑)里。
+
+到 [Releases](https://github.com/luoqingciya/InkFlow/releases) 页面下载。
+
+### 该下载哪个
+
+| 你的情况 | 下载这个 |
+|---|---|
+| Windows，想装一下 | `InkFlow-<版本>-setup.exe` |
+| Windows，不想安装 | `InkFlow-<版本>-win-x64.zip` |
+| macOS（Apple 芯片 M 系列） | `InkFlow-<版本>-arm64.dmg` |
+| macOS（Intel 芯片） | `InkFlow-<版本>-x64.dmg` |
+| Linux | `InkFlow-<版本>.AppImage` |
+| 只用命令行 / 接进自己的脚本 | `inkflow-server-*` + `inkflow-cli-*`（见下） |
+
+> 分不清 Mac 是哪种芯片？左上角  →「关于本机」，看「芯片」一行：
+> 写 Apple M 开头的选 `arm64`，写 Intel 的选 `x64`。
+
+### Windows
+
+**安装版**（`setup.exe`）：双击运行。安装过程里**可以改安装目录**，
+装完会在桌面和开始菜单创建快捷方式。
+
+**免安装版**（`win-x64.zip`）：解压到一个你放得下的地方，
+双击里面的 `InkFlow.exe` 即可。整个文件夹可以随意挪动 —— 数据就存在
+**这个文件夹旁边的 `.inkflow` 目录**里，拷走文件夹等于连数据一起搬走。
+
+> **卸载不会删你的数据。** 书、导出、导入的书源都留着。
+
+### macOS
+
+打开 `.dmg`，把 InkFlow 拖进「应用程序」。
+
+**第一次打开会被系统拦住**，提示「无法验证开发者」—— 因为这个版本
+没有做代码签名。绕过方法：在「应用程序」里**右键点 InkFlow 图标 → 打开**，
+在弹出的对话框里再点一次「打开」。之后就能正常双击启动了。
+
+> 若右键也没有「打开」选项：系统设置 → 隐私与安全性 → 往下找到
+> InkFlow 的提示 → 点「仍要打开」。
+
+### Linux
+
+```bash
+chmod +x InkFlow-*.AppImage
+./InkFlow-*.AppImage
+```
+
+### Windows 上的 SmartScreen 警告
+
+首次运行会弹「Windows 已保护你的电脑」。点「**更多信息**」→「**仍要运行**」。
+
+同样是**未做代码签名**导致的。签名需要购买证书，当前是预发布阶段，
+暂时没做 —— 这是已知的、有意搁置的事，不是打包出错。
+
+### 只想用命令行
+
+下载**同一平台**的两个文件：
+
+- `inkflow-server-<平台>` —— 后端服务
+- `inkflow-cli-<平台>` —— 命令行客户端
+
+```bash
+# 终端 1：起后端（保持这个窗口开着）
+./inkflow-server-windows-x64.exe
+
+# 终端 2：用 CLI
+./inkflow-cli-windows-x64.exe search "三体"
+```
+
+CLI 会自动找到后端 —— 后端启动时把端口和 token 写在数据目录的
+`server.json` 里，端口是系统分配的，命令行猜不到，所以靠这个文件协商。
+后端不在本机时也可以显式指定：
+
+```bash
+export INKFLOW_URL=http://192.168.1.10:8765
+export INKFLOW_TOKEN=<server.json 里的 token>
+```
+
+### 数据存在哪
+
+| 安装方式 | 数据目录 |
+|---|---|
+| 免安装 zip | 解压出的文件夹旁边的 `.inkflow/` |
+| 安装版 | 安装目录旁边的 `.inkflow/`（通常是 `%LOCALAPPDATA%\Programs\InkFlow\.inkflow`） |
+| 只用了后端 / CLI | 后端可执行文件旁边的 `.inkflow/` |
+
+如果程序所在位置**不可写**（比如 macOS 的 `.app` 内部、某些 Linux 安装位置），
+会自动退到用户主目录下的 `~/.inkflow`。
+
+想固定到某个位置，设环境变量即可：
+
+```bash
+export INKFLOW_HOME=/path/to/your/data
+```
+
+---
+
+## 从源码跑
+
+下面这些是**开发者**用的 —— 需要 Python 与 Node.js。
 
 ### 环境要求
 
@@ -196,8 +298,14 @@ npm run dev
 
 ### 完整流程
 
+> 下面的命令用 `inkflow` 指命令行客户端。按你的安装方式替换：
+> 下载的版本是 `./inkflow-cli-windows-x64.exe`（macOS / Linux 去掉 `.exe`），
+> 源码运行则是 `uv run inkflow`。
+>
+> **用桌面端的话不用敲这些** —— 界面上的顺序完全一样，见下面的「桌面端」小节。
+
 ```bash
-# 1. 起服务（桌面端会自动拉起，命令行用的话手动起）
+# 1. 起后端（用下载的版本时，这一步是双击后端可执行文件）
 uv run inkflow-server --port 8765
 
 # 2. 导入一个书源
@@ -224,9 +332,8 @@ uv run inkflow export <book-id> --format epub
 
 ### 桌面端
 
-```bash
-cd desktop && npm install && npm run dev
-```
+**不用单独起后端** —— 桌面端启动时会自己拉起内嵌的后端进程，
+你也不需要装 Python。
 
 界面里的顺序和上面一样：**书源 → 搜索 → 书库 → 下载 → 导出**。
 几个和命令行不同的地方：
@@ -235,18 +342,22 @@ cd desktop && npm install && npm run dev
 - 下载时可以随时暂停 / 恢复 / 取消
 - 已经下载过的章节会自动跳过，重跑不会重复抓
 
+（开发模式下跑桌面端见[从源码跑](#从源码跑)。）
+
 ### 文件都放在哪
 
 所有数据都在**一个目录**下，拷走即迁移（见 [ADR-015](docs/architecture/decisions.md)）：
 
 | 内容 | 位置 |
 |---|---|
-| 数据根目录 | 运行目录下的 `.inkflow/`（不可写时回退到 `~/.inkflow`） |
+| 数据根目录 | 程序旁边的 `.inkflow/`（不可写时回退到 `~/.inkflow`） |
 | 数据库 | `.inkflow/database/inkflow.db` |
 | 导出的书 | `.inkflow/exports/` |
 | 正文插图 | `.inkflow/books/<书籍ID>/images/` |
 | 日志 | `.inkflow/logs/inkflow.log` |
 | 后端握手信息 | `.inkflow/server.json`（端口 + token，CLI 靠它找到服务） |
+
+具体「程序旁边」是哪，见[数据存在哪](#数据存在哪)。
 
 想换位置就设环境变量 `INKFLOW_HOME=/path/to/data`。
 
