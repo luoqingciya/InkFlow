@@ -57,9 +57,7 @@ def test_frozen_build_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert "没有带浏览器引擎" in message
 
 
-def test_missing_playwright_is_reported(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_missing_playwright_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("inkflow_browser_playwright.install.is_frozen", lambda: False)
     monkeypatch.setitem(sys.modules, "playwright", None)  # 让 import 失败
 
