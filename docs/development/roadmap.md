@@ -7,7 +7,7 @@ M0 架构验证        ✅ 已完成
 M1 MVP             ✅ 已完成（核心链路 + 外围补齐）
 M2 Legado 兼容      ✅ 已覆盖 L0 + L1
 M3 JS Runtime      ✅ 已覆盖 L2（独立 sidecar）
-M4 Browser Runtime ⬜ 未开始
+M4 Browser Runtime ✅ 已完成
 M5 高级功能        ⬜ 未开始
 ```
 
@@ -68,7 +68,8 @@ M5 高级功能        ⬜ 未开始
 | 封面下载 | ✅ 写入 EPUB，缺封面时自动补抓详情页（ADR-019） |
 | 正文插图下载 | ✅ 存到 `.inkflow/books/<id>/images/`（EPUB 内嵌待定，见下） |
 | 数据目录只读回退 | ✅ 实机验证：运行目录不可写时回退 `~/.inkflow` |
-| Electron 骨架（窗口 / 托盘 / 后端管理 / IPC 白名单） | ✅ 已实机验证 |
+| Electron 骨架 · 主进程 / 后端管理 / 数据目录 | ✅ 实机验证（2026-10-02：打包产物真跑起来，拉起内嵌后端，数据落在运行目录，握手文件正常） |
+| Electron 骨架 · 窗口 / 托盘 / IPC 白名单 | 🟡 代码完成，**未逐项实机确认** —— 那次验证只看到进程起来与后端拉起 |
 | 测试（218 项） | ✅ 含下载链路、WebSocket、缓存、日志与资源下载 |
 | 文档（17 份） | ✅ |
 | CI（测试流水线） | ✅ Ubuntu + Windows 双平台 |
@@ -261,7 +262,7 @@ Phase 5  API              ✅
 Phase 6  CLI              ✅
 Phase 7  Downloader       ✅
 Phase 8  Exporter         ✅
-Phase 9  Electron         🟡 代码完成，待实机验证
+Phase 9  Electron         ✅ 主进程链路已实机验证（窗口 / 托盘 / IPC 未逐项确认）
 Phase 10 Legado JS        ⬜
 ```
 

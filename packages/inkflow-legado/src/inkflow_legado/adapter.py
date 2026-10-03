@@ -155,17 +155,22 @@ class LegadoSourceAdapter(BaseSourceAdapter):
         rendered = render_legado_template(template, self._variables(**extra)).strip()
         return urljoin(self.definition.bookSourceUrl, rendered)
 
-    def _guard_js(self, rule: Rule, where: str) -> None:
-        """遇到 JS 规则时抛出明确错误，而不是返回空结果。
+    def _guard_list_rule(self, rule: Rule, where: str) -> None:
+        """列表规则不支持 ``@js:`` 时抛出明确错误，而不是返回空结果。
 
-        MVP 只覆盖 L0 + L1；静默失败会让用户以为「书源坏了」，
-        而实际上只是兼容等级没到。
+        **只对列表规则**（搜索列表）用 —— 它要产出**节点集合**，
+        而 JS 侧目前只能返回文本。这是「这种写法还没支持」，
+        **不是「兼容等级没到」**：报错必须说清楚，否则用户会以为
+        升级一下就能用。
+
+        正文 / 下一页这类**取值**规则是可以跑 ``@js:`` 的，见 :meth:`_value_of`。
         """
         if rule.needs_js:
             raise SourceError(
-                f"{where} 规则包含 JavaScript，需要 L2 兼容等级（当前版本未实现）",
+                f"{where} 规则不支持 @js: —— 列表规则需要产出节点集合，"
+                f"而 JS 侧目前只能返回文本。请改用选择器或 JSONPath。",
                 code=ErrorCode.SOURCE_EXECUTION_ERROR,
-                details={"source_id": self.source.id, "rule": rule.raw, "required_level": "L2"},
+                details={"source_id": self.source.id, "rule": rule.raw, "rule_kind": "list"},
             )
 
     async def _fetch(
@@ -266,7 +271,7 @@ class LegadoSourceAdapter(BaseSourceAdapter):
         """搜索。"""
         if not self.definition.search_enabled:
             return []
-        self._guard_js(self._rule_search_list, "搜索列表")
+        self._guard_list_rule(self._rule_search_list, "搜索列表")
 
         _, doc = await self._fetch(
             self.definition.searchUrl, key=keyword, keyword=keyword, page=page
@@ -379,8 +384,6 @@ class LegadoSourceAdapter(BaseSourceAdapter):
 
     async def content(self, chapter_url: str) -> ContentResult:
         """获取正文，支持 ``nextContentUrl`` 分页拼接。"""
-        self._guard_js(self._rule_content, "正文")
-
         parts: list[str] = []
         chapter_name: str | None = None
         current = chapter_url
@@ -398,7 +401,7 @@ class LegadoSourceAdapter(BaseSourceAdapter):
             )
             context = RuleContext(doc=doc, base_url=current)
 
-            value = self._rule_content.evaluate_one(context)
+            value = await self._value_of(self._rule_content, context)
             if not value:
                 raise SourceError(
                     "正文规则未匹配到内容，书源规则可能已失效",
@@ -416,7 +419,7 @@ class LegadoSourceAdapter(BaseSourceAdapter):
 
             if self._rule_content_next is None:
                 break
-            next_url = self._rule_content_next.evaluate_one(context)
+            next_url = await self._value_of(self._rule_content_next, context)
             if not next_url:
                 break
             current = next_url
@@ -431,14 +434,22 @@ class LegadoSourceAdapter(BaseSourceAdapter):
     # -- 内部 --------------------------------------------------------------
 
     async def _field(self, rules: dict[str, Rule], name: str, context: RuleContext) -> str | None:
-        """取某个字段的值；规则缺失时返回 ``None``。
-
-        ``@js:`` 规则要跑 Node sidecar，所以这里是异步的 —— 其余模式
-        仍是同步求值，只是被包在同一个入口里。
-        """
+        """取某个字段的值；规则缺失时返回 ``None``。"""
         rule = rules.get(name)
         if rule is None:
             return None
+        return await self._value_of(rule, context)
+
+    async def _value_of(self, rule: Rule, context: RuleContext) -> str | None:
+        """按规则模式取值。
+
+        ``@js:`` 规则要跑 Node sidecar，所以这里是异步的 —— 其余模式
+        仍是同步求值，只是被包在同一个入口里。
+
+        字段、正文、下一页**都走这里**：它们要的都是「一个文本值」，
+        没有理由只让字段支持 ``@js:``。列表规则不一样（要节点集合），
+        见 :meth:`_guard_list_rule`。
+        """
         if rule.mode is RuleMode.JS:
             return await self._eval_js(rule, context)
         return rule.evaluate_one(context)

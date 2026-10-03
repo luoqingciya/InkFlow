@@ -195,8 +195,13 @@ async def test_l1_content_is_cleaned(adapter: LegadoSourceAdapter, mock_site: st
 # ---------------------------------------------------------------- 等级边界
 
 
-async def test_l2_js_rule_fails_loudly(state, mock_site: str) -> None:
-    """JS 规则必须抛出明确错误，不能静默返回空结果。"""
+async def test_js_content_rule_requires_runtime(state, mock_site: str) -> None:
+    """正文规则用了 ``@js:``、而运行时没启用时，要说清**怎么启用**。
+
+    这条原先断言的是「报 L2 未实现」—— 那时正文规则压根不支持 JS，
+    报的是「兼容等级没到」。现在正文与字段走同一条取值路径，
+    报错也统一成「未启用 + 怎么开」：**是配置问题就说配置问题**。
+    """
     from inkflow_core.errors import SourceError
 
     js_source = legado_source(mock_site)
@@ -209,8 +214,8 @@ async def test_l2_js_rule_fails_loudly(state, mock_site: str) -> None:
     with pytest.raises(SourceError) as excinfo:
         await js_adapter.content(f"{mock_site}/chapter/1")
 
-    assert excinfo.value.code == "SOURCE_EXECUTION_ERROR"
-    assert "L2" in excinfo.value.message
+    assert "未启用" in excinfo.value.message
+    assert "enabled = true" in excinfo.value.message
 
 
 async def test_empty_content_rule_raises(state, mock_site: str) -> None:

@@ -592,6 +592,7 @@ class DownloadTaskManager:
             source_name=source_name,
             cover_bytes=cover[0] if cover else None,
             cover_media_type=cover[1] if cover else "image/jpeg",
+            filename_template=self.settings.export.filename_template,
         )
         written = await asyncio.to_thread(exporter.export, request)
 

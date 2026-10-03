@@ -78,12 +78,14 @@ InkFlow/
 │   ├── inkflow-core/            # 数据模型、配置、存储抽象（无业务依赖）
 │   ├── inkflow-source/          # Source Engine：Adapter 协议、注册表、HTTP 引擎
 │   ├── inkflow-legado/          # Legado 兼容层：Schema、Rule Compiler、Adapter
+│   ├── inkflow-js-runtime/      # Legado JS 规则：Python 客户端 + Node sidecar
+│   ├── inkflow-browser-playwright/  # 浏览器引擎：Playwright（按需下载）
+│   ├── inkflow-browser-electron/    # 浏览器引擎：用桌面端自带的 Chromium
 │   ├── inkflow-api/             # FastAPI 服务：REST + WebSocket
 │   ├── inkflow-cli/             # Typer CLI（纯 API 客户端）
-│   └── inkflow-export/          # 导出器：TXT / EPUB
+│   └── inkflow-export/          # 导出器：TXT / EPUB / Markdown
 ├── desktop/                     # Electron + Vue 3 桌面端
 │   └── src/{main,preload,renderer}
-├── runtime/js/                  # Legado JS 沙箱运行时（Milestone 3）
 ├── sources/                     # 书源：official / community / test
 ├── tests/                       # unit / integration / source / fixtures
 ├── docs/                        # 架构、API、书源、开发文档
@@ -93,12 +95,16 @@ InkFlow/
 依赖方向是单向的，不允许反向 import：
 
 ```text
-inkflow-core  ←  inkflow-source  ←  inkflow-legado
-      ↑                ↑
-      │                │
-inkflow-api  ──────────┘
-      ↑
-inkflow-cli
+inkflow-core                      # 无内部依赖
+   ├── inkflow-source
+   │      └── inkflow-legado  ←── inkflow-js-runtime
+   ├── inkflow-export
+   ├── inkflow-js-runtime
+   ├── inkflow-browser-playwright
+   ├── inkflow-browser-electron
+   └── inkflow-cli                # 只依赖 core：纯 API 客户端
+
+inkflow-api  ←  上面除 cli 之外的全部（装配层）
 ```
 
 ---

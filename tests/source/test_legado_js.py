@@ -531,3 +531,60 @@ async def test_local_host_calls_do_not_consume_budget() -> None:
 
     assert result == "done"
     assert len(http.calls) == 1
+
+
+# ================================================================ 规则位置与 JS 的边界
+#
+# `@js:` 能出现在哪些规则上？判断标准是**这条规则要产出什么**：
+# 要一个**文本值**的（字段 / 正文 / 下一页）都可以；要**节点集合**的
+# （搜索列表）不行 —— JS 侧目前只能返回文本。
+#
+# 之前正文规则被一道 `_guard_js` 拦着，报的还是「L2 当前版本未实现」：
+# 明明是**支持范围**的问题，却说成了**版本**问题。报错指错方向，
+# 用户就会去升级版本，而不是换写法。
+
+
+@pytest.fixture
+def source_with_js_content(mock_site: str) -> dict:
+    """正文规则换成 ``@js:``，里面用宿主 API 取值（真实书源里的常见写法）。"""
+    definition = legado_source(mock_site)
+    definition["ruleContent"]["content"] = "@js: java.getString('id.content@html')"
+    return definition
+
+
+@requires_node
+async def test_js_content_rule_gives_the_same_result_as_selector(
+    js_state, source_with_js_content: dict, mock_site: str
+) -> None:
+    """同一条正文，写成选择器和写成 ``@js:`` 要拿到一样的内容。
+
+    用**等价性**断言而不是比对写死的文本：前者能一直挡住回归，
+    后者在 mock 站点改一个字之后就只能删掉。
+    """
+    url = f"{mock_site}/chapter/1"
+    plain = _adapter_from(js_state, legado_source(mock_site))
+    expected = await plain.content(url)
+
+    via_js = _adapter_from(js_state, source_with_js_content)
+    actual = await via_js.content(url)
+
+    assert actual.content == expected.content
+
+
+@requires_node
+async def test_js_list_rule_error_does_not_claim_a_version_problem(
+    js_state, mock_site: str
+) -> None:
+    """搜索列表不支持 ``@js:`` —— 报错要说清是**写法**不支持。"""
+    definition = legado_source(mock_site)
+    definition["ruleSearch"]["bookList"] = "@js: 'div.book-item'"
+    adapter = _adapter_from(js_state, definition)
+
+    with pytest.raises(SourceError) as info:
+        await adapter.search("三体")
+
+    message = str(info.value)
+    assert "@js:" in message
+    assert "不支持" in message
+    # 关键：不能说成版本问题 —— 那会让人以为升级一下就能用
+    assert "未实现" not in message

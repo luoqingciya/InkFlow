@@ -216,3 +216,58 @@ def test_markdown_export(request_factory) -> None:
     assert 'title: "三体"' in text
     assert "## 目录" in text
     assert "## 第1章 测试章节" in text
+
+
+# ---------------------------------------------------------------- 文件名模板
+#
+# `[export] filename_template` 之前是**死配置**：字段定义了、`config.example.toml`
+# 里写着、默认值也定了，但全项目没人读它 —— 文件名一直硬编码用书名。
+# 这几条把它钉住。
+
+
+def test_default_template_is_book_name(request_factory) -> None:
+    assert request_factory().filename_stem == "三体"
+
+
+def test_template_can_use_author(request_factory) -> None:
+    request = request_factory()
+    request.filename_template = "{name} - {author}"
+
+    assert request.filename_stem == "三体 - 刘慈欣"
+
+
+def test_template_can_use_source_name(request_factory) -> None:
+    request = request_factory()
+    request.source_name = "Mock 书站"
+    request.filename_template = "{source}_{name}"
+
+    assert request.filename_stem == "Mock 书站_三体"
+
+
+def test_unknown_placeholder_falls_back_to_book_name(request_factory) -> None:
+    """模板拼错了不该让导出失败 —— 要的是能用的文件名，不是一个 500。"""
+    request = request_factory()
+    request.filename_template = "{nmae}"
+
+    assert request.filename_stem == "三体"
+
+
+def test_template_rendering_to_empty_falls_back(request_factory) -> None:
+    """渲染成空串时也要退回书名（模板只有 {author} 而这本没作者）。"""
+    request = request_factory()
+    request.book.author = ""
+    request.filename_template = "{author}"
+
+    assert request.filename_stem == "三体"
+
+
+def test_rendered_name_is_still_sanitized(request_factory) -> None:
+    """模板拼出来的名字照样要过非法字符清洗 —— 作者名里带斜杠很常见。"""
+    request = request_factory()
+    request.book.author = "刘/慈\\欣:著"
+    request.filename_template = "{name} - {author}"
+
+    stem = request.filename_stem
+
+    for bad in '/\\:*?"<>|':
+        assert bad not in stem
