@@ -115,6 +115,9 @@ function handleEval(params) {
 
 function main() {
   writeLog(`sidecar 就绪 node=${process.version} pid=${process.pid}`);
+  // 就绪握手（走 stdout 协议通道）。Python 侧靠它把**进程启动**与
+  // **规则执行**分开计时 —— 启动慢和规则慢要报不同的错。
+  writeMessage({ method: 'ready', node: process.version, pid: process.pid });
 
   while (true) {
     const line = readLineSync();

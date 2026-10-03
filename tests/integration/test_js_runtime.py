@@ -43,6 +43,41 @@ async def test_returns_last_statement_value(runtime: JsRuntime) -> None:
 
 
 @requires_node
+async def test_start_is_idempotent_with_handshake(runtime: JsRuntime) -> None:
+    """重复 start 不该把就绪消息再读一遍 —— 那会吞掉下一条真正的响应。"""
+    await runtime.start()
+    await runtime.start()
+
+    assert await runtime.eval("2 + 2") == 4
+
+
+@requires_node
+async def test_slow_startup_is_not_reported_as_rule_timeout(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """启动慢要报「启动超时」，**不能**报成「规则执行超时」。
+
+    这两件事混在一起，查错方向就全错了 —— Windows CI 上那次偶发超时
+    一直没查出来，就是因为分不清是哪一个。
+    """
+    stub = tmp_path / "silent.mjs"
+    stub.write_text("setTimeout(() => {}, 60000);\n", encoding="utf-8")
+    monkeypatch.setattr("inkflow_js_runtime.client.SIDECAR_ENTRY", stub)
+    monkeypatch.setattr(JsRuntime, "STARTUP_TIMEOUT", 0.5)
+
+    runtime = JsRuntime(JsConfig(enabled=True, timeout=5.0))
+    try:
+        with pytest.raises(JsUnavailableError) as info:
+            await runtime.start()
+    finally:
+        await runtime.close()
+
+    message = str(info.value)
+    assert "启动超时" in message
+    assert "规则" not in message
+
+
+@requires_node
 async def test_returns_string(runtime: JsRuntime) -> None:
     assert await runtime.eval("'三体' + 'Ⅱ'") == "三体Ⅱ"
 

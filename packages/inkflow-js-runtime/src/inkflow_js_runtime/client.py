@@ -21,6 +21,8 @@ import json
 import logging
 import os
 import shutil
+import time
+from collections import deque
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
@@ -78,6 +80,14 @@ class JsRuntime:
         node: node 可执行文件路径；省略时自动查找。
     """
 
+    #: 等 sidecar 就绪的上限（秒）。
+    #:
+    #: 与**规则执行**的超时分开：进程创建 + ESM 加载在共享 runner 上可能很慢
+    #: （Windows CI 上偶发的「第一次求值超时」就疑似出在这里），
+    #: 但那不是规则的耗时。混在一起，会让「启动慢」报成「规则执行超时」，
+    #: 查错方向就全错了。
+    STARTUP_TIMEOUT = 60.0
+
     def __init__(
         self,
         config: JsConfig,
@@ -94,6 +104,12 @@ class JsRuntime:
         self._sequence = 0
         # 保存引用：不持有的话任务可能被 GC 回收，stderr 就没人读了
         self._stderr_task: asyncio.Task[None] | None = None
+        #: sidecar stderr 的末尾若干行。超时时带进报错 ——
+        #: 侧车启动会写「sidecar 就绪」，**有这行说明进程起来了**，
+        #: 没有则说明它压根没跑起来。两种情况要查的方向完全不同。
+        self._stderr_tail: deque[str] = deque(maxlen=20)
+        #: 进程启动时刻，用来区分「冷启动慢」与「规则执行慢」。
+        self._spawned_at: float | None = None
 
     # -- 生命周期 ----------------------------------------------------------
 
@@ -136,7 +152,47 @@ class JsRuntime:
 
         # stderr 只用来记日志，读完即弃 —— 不读会把它塞满导致 sidecar 阻塞
         self._stderr_task = asyncio.create_task(self._drain_stderr())
+        self._spawned_at = time.monotonic()
         logger.info("JS sidecar 已启动 pid=%s", self._process.pid)
+
+        # 必须等就绪再返回：不等的话，「进程还没起来」这段时间会被算进
+        # 第一次求值的预算里，慢启动就报成了「规则执行超时」。
+        await self._wait_ready()
+
+    async def _wait_ready(self) -> None:
+        """等 sidecar 的就绪握手（stdout 上的一条 ``{"method":"ready"}``）。
+
+        Raises:
+            JsUnavailableError: 超时，或进程在就绪前退出。
+        """
+        process = self._process
+        stdout = process.stdout if process is not None else None
+        if stdout is None:
+            raise JsUnavailableError("sidecar 未在运行")
+
+        async def read_until_ready() -> None:
+            while True:
+                line = await stdout.readline()
+                if not line:
+                    raise JsUnavailableError("sidecar 在就绪前退出")
+                try:
+                    message = json.loads(line.decode("utf-8"))
+                except json.JSONDecodeError:
+                    # 就绪前 stdout 上不该有别的东西，但别为一条脏数据炸掉
+                    continue
+                if message.get("method") == "ready":
+                    return
+
+        try:
+            await asyncio.wait_for(read_until_ready(), timeout=self.STARTUP_TIMEOUT)
+        except TimeoutError as exc:
+            elapsed = time.monotonic() - (self._spawned_at or time.monotonic())
+            tail = list(self._stderr_tail)
+            hint = "；".join(tail[-5:]) if tail else "sidecar 没有任何日志"
+            await self._discard_process()
+            raise JsUnavailableError(
+                f"JS sidecar 启动超时（{elapsed:.1f}s 未就绪，上限 {self.STARTUP_TIMEOUT:.0f}s）。{hint}"
+            ) from exc
 
     async def close(self) -> None:
         """关闭 sidecar。已经退出或从未启动时静默返回。"""
@@ -159,7 +215,10 @@ class JsRuntime:
         logger.info("JS sidecar 已关闭")
 
     async def _drain_stderr(self) -> None:
-        """把 sidecar 的日志转进 Python 日志，避免管道塞满。"""
+        """把 sidecar 的日志转进 Python 日志，避免管道塞满。
+
+        同时留一份末尾若干行 —— 超时时要靠它判断「进程到底起没起来」。
+        """
         process = self._process
         if process is None or process.stderr is None:
             return
@@ -167,7 +226,9 @@ class JsRuntime:
             line = await process.stderr.readline()
             if not line:
                 return
-            logger.debug("sidecar: %s", line.decode("utf-8", errors="replace").rstrip())
+            text = line.decode("utf-8", errors="replace").rstrip()
+            self._stderr_tail.append(text)
+            logger.debug("sidecar: %s", text)
 
     # -- 执行 --------------------------------------------------------------
 
@@ -233,10 +294,31 @@ class JsRuntime:
         except TimeoutError as exc:
             # Python 侧的兜底超时（比 sidecar 的宽 5s）。走到这里说明
             # sidecar 卡死了，进程状态不可信，直接丢掉让它下次重启。
+            detail = self._timeout_detail(effective_timeout + 5.0)
             await self._discard_process()
             raise JsRuntimeError(
-                f"JS 执行超时（{effective_timeout + 5.0:.0f}s 无响应）", kind="timeout"
+                f"JS 执行超时（{effective_timeout + 5.0:.0f}s 无响应）。{detail}",
+                kind="timeout",
             ) from exc
+
+    def _timeout_detail(self, waited: float) -> str:
+        """超时时能拼出来的上下文。
+
+        光说「无响应」没法查：得知道**进程起没起来**、这次是不是**冷启动**。
+        侧车启动会往 stderr 写「sidecar 就绪」—— 那行在不在，指向完全不同的
+        两个方向。
+        """
+        parts = [f"已等待 {waited:.1f}s"]
+        if self._spawned_at is not None:
+            parts.append(f"距进程启动 {time.monotonic() - self._spawned_at:.1f}s")
+        parts.append(f"进程{'仍在' if self.running else '已退出'}")
+
+        tail = list(self._stderr_tail)
+        if tail:
+            parts.append("sidecar 日志末尾：" + " | ".join(tail[-5:]))
+        else:
+            parts.append("sidecar 没有任何日志（进程可能根本没跑起来）")
+        return "；".join(parts)
 
     async def _pump(self, request_id: int, handler: HostRequestHandler | None) -> Any:
         """读消息直到拿到本次请求的结果，期间处理反向请求。"""
