@@ -915,11 +915,23 @@ playwright。所以它能在冻结构建里工作，这正是这条路的意义�
 **1. CI 分层：日常只跑接口与桩，真实浏览器单独 job。**
 
 日常 CI（每次 push）跑 `BrowserProvider` 契约、未安装时的报错、配置开关
-—— **不下载浏览器**。真实浏览器用例加 `browser` marker，找不到浏览器时
-`skipif` 跳过；另设 nightly / 手动触发的 job 装 Playwright 跑真实用例。
+—— **不下载浏览器**。真实浏览器用例加 `browser` marker，并在 `pytest` 的
+`addopts` 里**默认排除**；另设一个 job（`.github/workflows/browser.yml`）
+装 Playwright 跑真实用例。
+
+那个 job 的触发是三种，各有各的用处：
+
+| 触发 | 抓什么 |
+|---|---|
+| 手动 | 排查时单独跑一遍 |
+| 改了浏览器相关代码（`paths`） | 回归 —— 不这样接上，**改了浏览器代码在 PR 阶段根本没验过** |
+| 每天定时 | 环境漂移（runner 镜像、下载源）与偶发 |
 
 理由：与现有 `requires_node` 的 skip 模式一致；不让每次 push 白下 270 MB；
 没装浏览器的开发者本地也能跑全套。
+
+**实测成本**（2026-10-03，跑了两轮）：**约 1 分钟**，含下 271MB。
+所以「每天定时」排得起 —— 详见 [cicd.md](../development/cicd.md)。
 
 > 顺带一提：现有 marker 里的 `e2e` 与 `network` **声明了却从未使用** ——
 > 这类「留给将来」的挂点，正好在此时派上用场。
