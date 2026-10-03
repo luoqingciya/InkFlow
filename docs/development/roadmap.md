@@ -141,8 +141,9 @@ Python (Legado 适配器)
   - 编码 / 摘要：`base64Encode/Decode`、`md5Encode` / `md5Encode16`、
     `hexEncode/Decode`、`digestHex`
   - 其它：`timeFormat`、`toNumChapter`（中文数字转阿拉伯数字）、`log`
-- 三层限制：进程内存（`--max-old-space-size`）、沙箱超时、
-  Python 兜底超时（超时即丢弃进程）
+- 四层限制：进程内存（`--max-old-space-size`）、沙箱超时、
+  Python 兜底超时（超时即丢弃进程）、**单次规则执行的网络请求数**
+  （`max_requests`，只数网络请求；`0` = 不限制。见 [ADR-023](../architecture/decisions.md)）
 - 未启用时**明确报错并把解法写进 message**，不静默返回空
 - 一个 sidecar 服务所有书源（每书源一个进程太浪费）
 

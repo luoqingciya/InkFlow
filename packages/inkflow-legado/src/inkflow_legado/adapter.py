@@ -80,6 +80,10 @@ class LegadoSourceAdapter(BaseSourceAdapter):
         self._js_variables: dict[str, str] = {}
         #: 当前 JS 规则的求值上下文。``java.getString`` 靠它取值。
         self._current_context: RuleContext | None = None
+        #: 单次规则执行的**网络**请求上限（来自 ``[js]`` 段；0 = 不限制）。
+        self._js_request_limit: int = js.config.max_requests if js is not None else 0
+        #: 本次求值已发起的网络请求数。计数在 ``_host_fetch``，重置在 ``_eval_js``。
+        self._js_request_count: int = 0
 
         # 预编译规则：编译一次，多次执行
         self._rule_search_list = self.compiler.compile(definition.ruleSearch.bookList)
@@ -429,10 +433,13 @@ class LegadoSourceAdapter(BaseSourceAdapter):
             "result": context.data,
         }
 
-        # 记下上下文：java.getString 要拿它求值。
+        # 记下上下文与请求计数：java.getString 要拿上下文求值，
+        # max_requests 按单次求值计数。
         # 用 try/finally 还原 —— 嵌套调用（规则里再触发规则）时不能串味。
         previous_context = self._current_context
+        previous_count = self._js_request_count
         self._current_context = context
+        self._js_request_count = 0
         try:
             value = await self.js.eval(
                 code,
@@ -447,6 +454,7 @@ class LegadoSourceAdapter(BaseSourceAdapter):
             ) from exc
         finally:
             self._current_context = previous_context
+            self._js_request_count = previous_count
 
         return None if value is None else str(value)
 
@@ -503,6 +511,19 @@ class LegadoSourceAdapter(BaseSourceAdapter):
         请求回到这里发出，而不是让 sidecar 自己联网 —— 这样 SSRF 防护、
         协议白名单、限速、缓存全部照旧生效。
         """
+        # 上限按「单次规则执行」计，只数网络请求 —— java.getString / put / get
+        # 是本地操作，不算在内（否则上限会被取值调用提前触发）。
+        limit = self._js_request_limit
+        if limit and self._js_request_count >= limit:
+            return {
+                "ok": False,
+                "error": (
+                    f"单次规则执行的网络请求超过上限（{limit} 次）。"
+                    f"确实需要更多请求的话，调大 config.toml 的 [js] max_requests。"
+                ),
+            }
+        self._js_request_count += 1
+
         if self.http is None:
             return {"ok": False, "error": "该书源没有 HTTP 客户端"}
 

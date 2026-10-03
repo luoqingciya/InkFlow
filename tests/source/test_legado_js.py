@@ -227,8 +227,13 @@ def _fake_source():
 #   java.getString 75 次、java.put 27 次、java.get 30 次
 
 
-def _js_adapter(js, source_def: dict):
-    """构造一个带 JS 运行时的适配器（不发网络请求）。"""
+def _js_adapter(js, source_def: dict, http=None):
+    """构造一个带 JS 运行时的适配器。
+
+    ``http`` 不传时**别假设「没有客户端」** —— 基类的 ``http`` 是惰性属性，
+    传 None 会按书源配置创建真实客户端。凡是会走 ``java.ajax`` 的用例
+    都必须注入假客户端，不要让测试真发网络请求。
+    """
     from inkflow_core.models import BookSource, SourceFormat, SourceType
 
     definition = LegadoBookSource.model_validate(source_def)
@@ -239,7 +244,7 @@ def _js_adapter(js, source_def: dict):
         source_type=SourceType.LEGADO,
         source_format=SourceFormat.LEGADO_JSON,
     )
-    return LegadoSourceAdapter(source=source, definition=definition, http=None, js=js)
+    return LegadoSourceAdapter(source=source, definition=definition, http=http, js=js)
 
 
 @requires_node
@@ -401,3 +406,128 @@ async def test_to_num_chapter() -> None:
         await js.close()
 
     assert results == cases
+
+
+# ================================================================ 请求数上限
+#
+# ``max_requests`` 限制的是**单次规则执行**能扇出多少网络请求（ADR-023）。
+# 只数网络请求 —— getString / put / get 是本地操作，不计入。
+
+
+class _FakeResponse:
+    def __init__(self, text: str = "ok", status: int = 200) -> None:
+        self.text = text
+        self.status = status
+        self.ok = status < 400
+
+
+class _FakeHttp:
+    """只记录调用，不发请求。"""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    async def request(self, method: str, url: str, data=None, headers=None) -> _FakeResponse:
+        self.calls.append(url)
+        return _FakeResponse()
+
+
+_LIMIT_DEF = {
+    "bookSourceName": "t",
+    "bookSourceUrl": "https://e.com",
+    "ruleBookInfo": {"name": "x"},
+}
+
+
+def _ajax_code(count: int) -> str:
+    calls = ";".join(f"java.ajax('https://e.com/{i}')" for i in range(count))
+    return f"@js:{calls};'done'"
+
+
+@requires_node
+async def test_requests_under_limit_go_through() -> None:
+    """没到上限时正常放行 —— 别把正常书源掐死。"""
+    js = JsRuntime(JsConfig(enabled=True, timeout=5.0, max_requests=3))
+    http = _FakeHttp()
+    try:
+        adapter = _js_adapter(js, _LIMIT_DEF, http=http)
+        result = await adapter._eval_js(adapter.compiler.compile(_ajax_code(3)), RuleContext())
+    finally:
+        await js.close()
+
+    assert result == "done"
+    assert len(http.calls) == 3
+
+
+@requires_node
+async def test_exceeding_limit_is_reported() -> None:
+    """超过上限要**明确报错**，并且真的把请求拦住。"""
+    js = JsRuntime(JsConfig(enabled=True, timeout=5.0, max_requests=2))
+    http = _FakeHttp()
+    try:
+        adapter = _js_adapter(js, _LIMIT_DEF, http=http)
+        with pytest.raises(SourceError) as info:
+            await adapter._eval_js(adapter.compiler.compile(_ajax_code(3)), RuleContext())
+    finally:
+        await js.close()
+
+    assert "超过上限" in str(info.value)
+    # 只放行 2 次 —— 第 3 次根本没发出去
+    assert len(http.calls) == 2
+
+
+@requires_node
+async def test_limit_resets_per_eval() -> None:
+    """计数按**单次求值**重置：上一次用满，不该影响下一次。"""
+    js = JsRuntime(JsConfig(enabled=True, timeout=5.0, max_requests=2))
+    http = _FakeHttp()
+    try:
+        adapter = _js_adapter(js, _LIMIT_DEF, http=http)
+        rule = adapter.compiler.compile(_ajax_code(2))
+        first = await adapter._eval_js(rule, RuleContext())
+        second = await adapter._eval_js(rule, RuleContext())
+    finally:
+        await js.close()
+
+    assert first == "done"
+    assert second == "done"
+    assert len(http.calls) == 4
+
+
+@requires_node
+async def test_zero_means_unlimited() -> None:
+    """``0`` = 不限制（ADR-023）。"""
+    js = JsRuntime(JsConfig(enabled=True, timeout=5.0, max_requests=0))
+    http = _FakeHttp()
+    try:
+        adapter = _js_adapter(js, _LIMIT_DEF, http=http)
+        result = await adapter._eval_js(adapter.compiler.compile(_ajax_code(5)), RuleContext())
+    finally:
+        await js.close()
+
+    assert result == "done"
+    assert len(http.calls) == 5
+
+
+@requires_node
+async def test_local_host_calls_do_not_consume_budget() -> None:
+    """``getString`` / ``put`` / ``get`` 是本地操作，不占网络请求配额。
+
+    上限设成 1：如果本地调用也被计数，这次 ``java.ajax`` 就会被误拦。
+    """
+    js = JsRuntime(JsConfig(enabled=True, timeout=5.0, max_requests=1))
+    http = _FakeHttp()
+    try:
+        adapter = _js_adapter(js, _LIMIT_DEF, http=http)
+        code = (
+            "@js:java.getString('$.a');java.put('k','v');java.get('k');"
+            "java.ajax('https://e.com/1');'done'"
+        )
+        result = await adapter._eval_js(
+            adapter.compiler.compile(code), RuleContext(data={"a": "1"})
+        )
+    finally:
+        await js.close()
+
+    assert result == "done"
+    assert len(http.calls) == 1
