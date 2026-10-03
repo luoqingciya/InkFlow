@@ -29,7 +29,7 @@ Legado 书源生态里，能力的跨度非常大：从纯 CSS 选择器到依�
 L0  ✅ 已实现
 L1  ✅ 已实现
 L2  ✅ 已实现（Milestone 3，需 Node.js 20+ 且 [js] enabled = true）
-L3  ⬜ 未实现（Milestone 4）
+L3  ⬜ 未实现（Milestone 4）—— 1363 条真实书源里占 **5.0%**（68 条）
 ```
 
 **当前版本覆盖 L0 + L1 + L2（部分）。**
@@ -55,7 +55,7 @@ L2 的 `@js:` 前缀已支持，宿主 API 已覆盖真实书源里频次最高�
 导入书源时自动判定（`inkflow_legado.detect_level`）：
 
 ```text
-书源规则里出现 webView 等浏览器指令  →  L3
+书源规则里出现 webView（写在 **URL 类规则**上，如 `chapterUrl` / `searchUrl`）→ L3
 书源规则里出现 @js: / <js> / java.   →  L2
 规则非空且不含上述特征               →  L1
 规则全为空                           →  L0
@@ -106,7 +106,7 @@ inkflow sources list
 |---|---|
 | Milestone 1（MVP） | L0 + L1 |
 | Milestone 3 | L2：Node.js sidecar 沙箱，支持 Promise / fetch / DOM / Cookie / 变量上下文 |
-| Milestone 4 | L3：浏览器运行时（Playwright 或 Electron），支持渲染、登录态、Cookie |
+| Milestone 4 | L3：浏览器运行时。**接口在 core，引擎按需下载**（[ADR-024](../architecture/decisions.md)），支持渲染、登录态、Cookie |
 
 设计约束（现在就要守住）：
 
