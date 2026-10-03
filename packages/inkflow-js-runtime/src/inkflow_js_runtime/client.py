@@ -126,6 +126,10 @@ class JsRuntime:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(SIDECAR_DIR),
+                # 读取上限 = 配置里的响应上限。asyncio 默认只有 64KB，
+                # 而书源规则完全可能返回一整页 HTML —— 那样会在 readline
+                # 抛 ValueError，变成一个跟协议无关的报错。
+                limit=self.config.max_response_bytes,
             )
         except OSError as exc:
             raise JsUnavailableError(f"启动 sidecar 失败：{exc}") from exc
@@ -240,7 +244,16 @@ class JsRuntime:
         assert process is not None and process.stdout is not None
 
         while True:
-            line = await process.stdout.readline()
+            try:
+                line = await process.stdout.readline()
+            except ValueError as exc:
+                # 单行超过 ``limit``（= max_response_size）时 StreamReader 抛
+                # ValueError。不接住会变成一个跟协议无关的报错，也看不出是超限。
+                await self._discard_process()
+                raise JsRuntimeError(
+                    f"JS 响应超过上限（{self.config.max_response_size}）",
+                    kind="too_large",
+                ) from exc
             if not line:
                 self._process = None
                 raise JsUnavailableError("sidecar 意外退出（stdout 已关闭）")
