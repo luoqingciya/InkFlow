@@ -133,9 +133,10 @@ def _parse_single(text: str) -> Rule:
     body, forced_mode = _strip_mode_prefix(body.strip())
     replacements = _parse_replacements(replacement_text)
 
-    # 3. 强制 JS 模式：编译成功但不执行
+    # 3. 强制 JS 模式：编译成功，执行与否由运行时决定
     if forced_mode is RuleMode.JS:
-        return Rule(raw=raw, mode=RuleMode.JS, replacements=replacements)
+        # 存剥离后的代码：``raw`` 带着 ``@js:`` 前缀，直接喂给 JS 引擎会语法错误
+        return Rule(raw=raw, mode=RuleMode.JS, code=body.strip(), replacements=replacements)
 
     # 4. JSON 模式：整段是 JSONPath
     if forced_mode is RuleMode.JSON:

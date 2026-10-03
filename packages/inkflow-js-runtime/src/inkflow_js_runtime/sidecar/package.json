@@ -1,0 +1,10 @@
+{
+  "name": "inkflow-js-sidecar",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "InkFlow JS 规则执行沙箱（Legado L2）。零依赖：只用 Node 内置模块。",
+  "engines": {
+    "node": ">=20"
+  }
+}

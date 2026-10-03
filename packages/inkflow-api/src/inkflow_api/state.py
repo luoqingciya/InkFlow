@@ -10,6 +10,8 @@ import sys
 from dataclasses import dataclass, field
 from time import monotonic
 
+from inkflow_js_runtime import JsRuntime
+
 from inkflow_api.auth import generate_token
 from inkflow_api.services import DownloadTaskManager, LibraryService, SqliteHttpCache
 from inkflow_core.config import Settings, get_settings
@@ -34,6 +36,7 @@ class AppState:
     paths: InkFlowPaths
     db: Database
     cache: SqliteHttpCache | None
+    js: JsRuntime | None
     registry: SourceRegistry
     loader: SourceLoader
     aggregator: SearchAggregator
@@ -81,9 +84,11 @@ class AppState:
         }
 
     async def shutdown(self) -> None:
-        """优雅关闭：先停任务，再关连接，最后释放数据库。"""
+        """优雅关闭：先停任务，再关连接与 sidecar，最后释放数据库。"""
         await self.tasks.shutdown()
         await self.registry.aclose_all()
+        if self.js is not None:
+            await self.js.close()
         self.db.dispose()
 
 
@@ -118,7 +123,8 @@ def build_state(
     resolved_loader = loader if loader is not None else default_loader
 
     # 注册内置书源类型（Legado 兼容层在此接入，Source 层本身不认识它）
-    _register_source_types(resolved_registry, resolved_loader)
+    js = _build_js_runtime(resolved_settings)
+    _register_source_types(resolved_registry, resolved_loader, js)
     # 让全局请求配置（超时、并发上限、内网访问开关）作用到每个书源
     cache = _build_cache(resolved_settings, db)
     http_factory = _make_http_factory(resolved_settings, cache)
@@ -139,6 +145,7 @@ def build_state(
         paths=resolved_paths,
         db=db,
         cache=cache,
+        js=js,
         registry=resolved_registry,
         loader=resolved_loader,
         aggregator=SearchAggregator(
@@ -185,7 +192,11 @@ def _make_http_factory(settings: Settings, cache: HttpCache | None) -> HttpFacto
     return factory
 
 
-def _register_source_types(registry: SourceRegistry, loader: SourceLoader) -> None:
+def _register_source_types(
+    registry: SourceRegistry,
+    loader: SourceLoader,
+    js: JsRuntime | None,
+) -> None:
     """注册内置书源类型。
 
     每种类型由自己的包负责注册（原生在 ``inkflow-source``，
@@ -200,4 +211,16 @@ def _register_source_types(registry: SourceRegistry, loader: SourceLoader) -> No
         from inkflow_legado import register_legado
     except ImportError:  # pragma: no cover - 仅在精简部署时发生
         return
-    register_legado(registry, loader)
+
+    register_legado(registry, loader, js)
+
+
+def _build_js_runtime(settings: Settings) -> JsRuntime | None:
+    """按配置构造 JS 运行时。
+
+    未启用时返回 ``None`` —— 此时 ``@js:`` 规则会抛「未启用」而不是
+    静默返回空。**一个实例服务所有书源**：每个书源起一个 Node 进程太浪费。
+    """
+    if not settings.js.enabled:
+        return None
+    return JsRuntime(settings.js)

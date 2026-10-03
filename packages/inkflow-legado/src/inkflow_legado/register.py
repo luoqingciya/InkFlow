@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from inkflow_js_runtime import JsRuntime
+
 from inkflow_core.errors import ErrorCode, SourceError
 from inkflow_core.models import (
     BookSource,
@@ -26,6 +28,7 @@ from inkflow_core.models import (
 from inkflow_core.utils import stable_id
 from inkflow_legado.adapter import LegadoSourceAdapter
 from inkflow_legado.schema import LegadoBookSource
+from inkflow_source.http import HttpClient
 from inkflow_source.loader import SourceLoader, default_loader
 from inkflow_source.registry import SourceRegistry, default_registry
 
@@ -122,17 +125,27 @@ def _parse_concurrent_rate(value: str) -> int:
 def register_legado(
     registry: SourceRegistry | None = None,
     loader: SourceLoader | None = None,
+    js: JsRuntime | None = None,
 ) -> None:
     """把 Legado 工厂与格式解析器注册到 Source Engine。
 
     幂等：重复调用会覆盖既有注册项，不报错。
+
+    Args:
+        registry: 目标注册表。
+        loader: 目标加载器。
+        js: 共享的 JS 运行时。**一个进程服务所有书源** —— 每个书源起一个
+            Node 进程太浪费（每个约 30MB），而且没必要。省略时 ``@js:``
+            规则会报「未启用」。
     """
+
+    def factory(source: BookSource, http: HttpClient | None) -> LegadoSourceAdapter:
+        return LegadoSourceAdapter.from_source(source, http, js)
+
     target_registry = registry if registry is not None else default_registry
     target_loader = loader if loader is not None else default_loader
 
-    target_registry.register_factory(
-        SourceType.LEGADO, LegadoSourceAdapter.from_source, replace=True
-    )
+    target_registry.register_factory(SourceType.LEGADO, factory, replace=True)
     target_loader.register_format_parser(
         SourceFormat.LEGADO_JSON, build_legado_source, replace=True
     )
