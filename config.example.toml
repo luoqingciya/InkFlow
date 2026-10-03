@@ -56,7 +56,11 @@ enabled = false
 timeout = 15
 # sidecar 进程的内存上限（MB）。vm 管不了内存，靠进程级参数限制。
 max_memory_mb = 128
+# 单次规则执行最多发起的**网络**请求数（java.ajax / java.ajaxAll）。
+# 只计网络请求 —— java.getString / put / get 是本地操作，不计入。
+# 0 表示不限制。
 max_requests = 50
+# 单次响应的体积上限。超过时报错，不截断。
 max_response_size = "8MB"
 
 [browser]
