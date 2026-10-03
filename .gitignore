@@ -39,6 +39,8 @@ desktop/.asar-tmp/
 desktop/electron.vite.config.*.mjs
 .electron-vite/
 *.tsbuildinfo
+# 浏览器桥冒烟测试的编译产物（npm run smoke:bridge 每次重新生成）
+desktop/scripts/.bridge-smoke.cjs
 
 # 打包时临时放入的 Python 后端（由 CI 从 dist/ 拷入，不入库）
 desktop/resources/backend/

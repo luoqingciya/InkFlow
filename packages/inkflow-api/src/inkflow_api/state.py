@@ -229,16 +229,39 @@ def _build_browser(settings: Settings) -> BrowserProvider | None:
 
     **一个实例服务所有书源**：一个浏览器实例几百 MB，按书源起不现实。
 
-    引擎由外层注册（ADR-024）：core 不认识 Playwright，这里显式挂上去。
+    引擎由外层注册（ADR-024）：core 不认识任何具体引擎，这里显式挂上去。
+    两个引擎的差别是**浏览器从哪来**：
+
+    - ``playwright`` —— 自己下载 headless Chromium（约 270MB）
+    - ``electron`` —— 用桌面端自带的 Chromium，靠环境变量找到那座桥
     """
     if not settings.browser.enabled:
         return None
 
-    from inkflow_browser_playwright import register_playwright
-
     registry = BrowserRegistry()
-    register_playwright(registry)
+    _register_engines(registry)
     return registry.create(settings.browser)
+
+
+def _register_engines(registry: BrowserRegistry) -> None:
+    """把**装得上**的引擎都挂上，装不上的跳过。
+
+    跳过而不是报错：少一个引擎不该让另一个也用不了。真配了没装的那个时，
+    ``registry.create()`` 会列出已注册的引擎 —— 报错仍然说得清。
+    """
+    try:
+        from inkflow_browser_playwright import register_playwright
+    except ImportError:  # pragma: no cover - 精简部署
+        pass
+    else:
+        register_playwright(registry)
+
+    try:
+        from inkflow_browser_electron import register_electron
+    except ImportError:  # pragma: no cover - 精简部署
+        pass
+    else:
+        register_electron(registry)
 
 
 def _build_js_runtime(settings: Settings) -> JsRuntime | None:

@@ -9,6 +9,7 @@ resolution-markers = [
 [manifest]
 members = [
     "inkflow-api",
+    "inkflow-browser-electron",
     "inkflow-browser-playwright",
     "inkflow-cli",
     "inkflow-core",
@@ -339,6 +340,7 @@ name = "inkflow-api"
 source = { editable = "packages/inkflow-api" }
 dependencies = [
     { name = "fastapi" },
+    { name = "inkflow-browser-electron" },
     { name = "inkflow-browser-playwright" },
     { name = "inkflow-core" },
     { name = "inkflow-export" },
@@ -351,6 +353,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "inkflow-browser-electron", editable = "packages/inkflow-browser-electron" },
     { name = "inkflow-browser-playwright", editable = "packages/inkflow-browser-playwright" },
     { name = "inkflow-core", editable = "packages/inkflow-core" },
     { name = "inkflow-export", editable = "packages/inkflow-export" },
@@ -358,6 +361,20 @@ requires-dist = [
     { name = "inkflow-source", editable = "packages/inkflow-source" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+]
+
+[[package]]
+name = "inkflow-browser-electron"
+source = { editable = "packages/inkflow-browser-electron" }
+dependencies = [
+    { name = "httpx" },
+    { name = "inkflow-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "inkflow-core", editable = "packages/inkflow-core" },
 ]
 
 [[package]]

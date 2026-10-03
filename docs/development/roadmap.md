@@ -209,11 +209,20 @@ Python (Legado 适配器)
 | `java.webView(...)` 宿主 API（JS 规则里调的那种） | ✅ |
 | 首次启用时的下载引导（API + CLI） | ✅ |
 | 真实浏览器用例的定时跑（先手动触发，看清成本再定） | ⬜ |
-| **桌面端 L3 —— Electron 实现** | ⬜ |
+| **桌面端 L3 —— Electron 实现** | ✅ |
 
 **⚠️ 冻结构建装不了 Playwright**（实现下载引导时发现）：单文件 exe 里既没有
 playwright（可选 extra）也没有 pip。所以桌面端（分发的是冻结产物）**要支持 L3
 只能走 Electron 实现** —— 桌面端本来就带 Chromium。详见 ADR-024 的补注。
+
+**桌面端这条路怎么走通的**：桌面端在主进程里开一座**只监听回环的桥**，
+后端通过它请求渲染。桥的地址与 token 由桌面端在 spawn 后端之前通过环境变量
+传进去。后端侧（`inkflow-browser-electron`）只依赖 httpx，**不需要 playwright**,
+所以在冻结构建里也能工作。
+
+**验证方式**：`cd desktop && npm run smoke:bridge` —— 起真的 Electron 主进程
+与真的 `BrowserWindow`，把协议、鉴权、渲染、JS 执行都验一遍。日常 CI 里也跑
+（ubuntu 上套 `xvfb-run`）。
 
 `config.toml` 里的 `[browser]` 段已有 `enabled` / `engine` / `headless` /
 `timeout` / `install_dir`。

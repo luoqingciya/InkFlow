@@ -38,6 +38,7 @@ inkflow-cli = { workspace = true }
 inkflow-export = { workspace = true }
 inkflow-js-runtime = { workspace = true }
 inkflow-browser-playwright = { workspace = true }
+inkflow-browser-electron = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -95,6 +96,7 @@ known-first-party = [
     "inkflow_export",
     "inkflow_js_runtime",
     "inkflow_browser_playwright",
+    "inkflow_browser_electron",
 ]
 
 [tool.ruff.lint.per-file-ignores]

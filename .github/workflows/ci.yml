@@ -87,6 +87,13 @@ jobs:
         working-directory: desktop
         run: npm run build
 
+      - name: 浏览器桥冒烟测试
+        # 跑的是**真的 Electron 主进程 + 真的 BrowserWindow**：
+        # 协议、鉴权、渲染、JS 执行都验。BrowserWindow 在无头 Linux 上
+        # 需要虚拟显示，所以套 xvfb-run。
+        working-directory: desktop
+        run: xvfb-run -a npm run smoke:bridge
+
       - name: 校验打包配置
         # electron-builder 的配置错误（比如写了 schema 里不存在的键）
         # 只在真正打包时才报，而打包在 Release 里跑 —— 等发版才发现就太晚了。
