@@ -223,6 +223,7 @@ async def export_book(
         chapters=[ExportChapter(chapter=c, content=contents.get(c.id)) for c in selected],
         output_path=output_path,
         source_name=source_name,
+        filename_template=state.settings.export.filename_template,
     )
     written = await asyncio.to_thread(exporter.export, request)
 

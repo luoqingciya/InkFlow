@@ -21,8 +21,8 @@ timeout = 20
 retry = 3
 # 重试退避基数（秒），实际等待为 base * 2^(n-1)，并叠加抖动。
 retry_backoff = 1.0
-# 章节间最小间隔（秒），避免对同一站点形成突发流量。
-min_interval = 0.0
+# 想给站点限速用 [source] 段的 requests_per_second —— 它按**域名**限，
+# 且对搜索 / 目录 / 正文全都生效，不只下载。
 
 [export]
 default_format = "epub"

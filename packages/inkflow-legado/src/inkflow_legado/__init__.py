@@ -8,8 +8,10 @@
 2. 把 Legado 规则 DSL 编译成统一 AST（``compiler`` / ``rules``）
 3. 执行 AST 并产出 ``inkflow_core`` 的标准结果（``adapter``）
 
-当前覆盖 **L0 + L1**（JSON 结构、CSS / XPath / JSONPath / 正则）。
-L2（JS 沙箱）与 L3（浏览器）尚未实现，遇到时抛出明确错误而非静默失败。
+当前覆盖 **L0 + L1 + L2**：JSON 结构、CSS / XPath / JSONPath / 正则，
+以及 ``@js:`` 规则（跑独立 Node sidecar，见 ``inkflow-js-runtime``）。
+L3（浏览器）由 ``inkflow-browser-*`` 引擎提供，经 ``webView`` 选项接入。
+做不到的写法**明确报错**，不静默失败。
 
 本包不复制 Legado 项目的任何源代码。
 """

@@ -89,7 +89,6 @@ class DownloadConfig(BaseModel):
     timeout: float = Field(default=20.0, gt=0)
     retry: int = Field(default=3, ge=0, le=10)
     retry_backoff: float = Field(default=1.0, ge=0)
-    min_interval: float = Field(default=0.0, ge=0)
 
 
 class ExportConfig(BaseModel):

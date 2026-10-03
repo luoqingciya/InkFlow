@@ -112,10 +112,32 @@ class ExportRequest:
     cover_bytes: bytes | None = None
     cover_media_type: str = "image/jpeg"
     extra: dict[str, object] = field(default_factory=dict)
+    #: 文件名模板，可用 ``{name}`` / ``{author}`` / ``{source}``。
+    #: 由 ``[export] filename_template`` 传进来。
+    filename_template: str = "{name}"
 
     @property
     def filename_stem(self) -> str:
-        return sanitize_filename(self.book.name)
+        """导出文件名（不含扩展名）。"""
+        return sanitize_filename(self._render_filename())
+
+    def _render_filename(self) -> str:
+        """按模板渲染文件名。
+
+        **模板写坏了不让导出失败** —— 把 ``{name}`` 拼成 ``{nmae}``
+        该拿到一个能用的文件名，而不是一个 500。渲染成空串时同理
+        （比如模板是 ``{author}`` 而这本没有作者）。
+        """
+        values = {
+            "name": self.book.name,
+            "author": self.book.author or "",
+            "source": self.source_name,
+        }
+        try:
+            rendered = self.filename_template.format(**values)
+        except (KeyError, IndexError, ValueError):
+            return self.book.name
+        return rendered.strip() or self.book.name
 
 
 @runtime_checkable
