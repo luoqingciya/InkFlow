@@ -85,22 +85,40 @@ ubuntu runner 上没有显示服务，`BrowserWindow` 起不来，所以套 `xvf
 
 含下 271MB —— GitHub 的网快，缓存也帮得上。**成本低到可以每天跑。**
 
-### ⚠️ CI 因「下载失败」而红时，先看是不是镜像
+### ⚠️ 三个流水线都显式指定了官方索引 —— 别删
 
-`uv.lock` 里的下载 URL **写死了清华镜像**（916 处，见下）。镜像偶发 403 时，
-`uv sync` 会失败、job 直接红 —— 看起来像代码问题，其实不是。
+```yaml
+env:
+  UV_DEFAULT_INDEX: https://pypi.org/simple
+```
+
+**为什么需要**：`uv.lock` 里的下载 URL 指向清华镜像（生成 lock 的机器配了它，
+916 处）。而 **uv 下载时直接用 lock 里记录的 URL —— 索引配置盖不住它**。
+后果是镜像偶发 403 会让 job 直接红，而报错看起来像代码问题：
 
 ```text
 error: Failed to download `ruff==0.16.10`
   cause: HTTP status client error (403 Forbidden) for url (https://pypi.tuna.tsinghua.edu.cn/...)
 ```
 
-**处理**：确认报错里是 `pypi.tuna` + 4xx/5xx，就 `gh run rerun <id> --failed`。
-**别去改代码。**
+**为什么设这个变量有用**（实测出来的，不是推测）：
 
-> 已知的结构性问题，还没动：lock 写死镜像 ⇒ CI 依赖它；而本机连不上
-> `pypi.org`（实测超时），所以镜像又不能简单去掉。要改得先验证
-> 「lock 用官方源 + 本机用 `UV_DEFAULT_INDEX` 指镜像」这条路走不走得通。
+| 场景 | 实际请求的 host |
+|---|---|
+| 不设（模拟 CI） | `pypi.tuna.tsinghua.edu.cn/packages/…` × 2 ← **照样走镜像** |
+| **设了** | `pypi.org/simple/…` × 2 + `files.pythonhosted.org/packages/…` × 4，**tuna 一次都不碰** |
+
+设了之后 uv 会**重新解析**并按官方源下载。代价是每次多几秒解析 ——
+GitHub 到 pypi.org 很快，可以忽略。
+
+**为什么不干脆把 lock 改成官方源**：本机（国内）配了镜像，lock 的 registry
+与配置不匹配时 uv 会重解析并**把 URL 改回镜像** —— 改不干净，会来回反复。
+所以提交的 lock 保持镜像，只在 CI 绕开。
+
+> **顺带更正一条误判**：本机**能**访问 pypi.org，只是慢 ——
+> `pypi.org/simple/ruff/` 那个索引页有 2.58MB，60 秒都下不完。
+> 早先那次 curl 超时是**页面太大**，不是网络不通。文件 CDN
+> （`files.pythonhosted.org`）则很快（0.46s）。
 
 ---
 
