@@ -654,6 +654,83 @@ M2 完成时，兼容层的测试都是围绕**自己写的** mock 书源。那�
 
 ---
 
+## ADR-022 宿主 API 取值与变量回 Python 求值，`java.get` 是取变量
+
+**背景**
+
+ADR-020 让 `@js:` 规则**能跑**了，但真实书源高频使用的宿主 API
+**大多没实现**。从 1363 条真实书源统计出的调用频次暴露了缺口：
+
+| API | 次数 | 当时状态 |
+|---|---|---|
+| `java.getString` | **75** | ❌ 未实现 |
+| `java.ajax` | 45 | ✅ |
+| `java.get` | 30 | ❌ 未实现（取变量语义） |
+| `java.put` | **27** | ❌ 未实现 |
+| `java.toNumChapter` | 20 | ❌ 未实现 |
+| `java.ajaxAll` | 4 | ❌ 未实现 |
+
+**最常用的 `java.getString` 恰恰是缺的** —— 因为此前的测试书源都用
+L0/L1 规则，没触发它。mock 书源证明不了真实书源的覆盖度（同 ADR-021）。
+
+**决策**
+
+**1. `java.getString(rule)` 走反向 RPC 回 Python 求值，不在 JS 侧重造选择器引擎。**
+
+规则求值的能力（lxml / JSONPath / `!N` 下标 / 隐式 JSONPath / 模板……）
+已经在 Python 侧。在 JS 里再实现一套，**两套实现迟早会不一致** ——
+一处支持 `!0`、另一处不支持，就会变成「同一个规则在不同路径下结果不同」。
+
+**2. `java.put` / `java.get` 是「书源级变量」，存在 adapter 实例上。**
+
+真实书源的典型用法是：`tocUrl` 里 `put('bid', ...)` 算出 bookId，
+`chapterUrl` 里再 `get('bid')` 取出来 —— **跨规则、跨请求**都要在。
+
+存 adapter 实例而非 sidecar 全局：**每个书源一个 adapter**，
+于是「按书源隔离」是结构自带的，不需要额外的清理逻辑。
+
+**3. `java.get` 是取变量，不是 HTTP GET。**
+
+这是本轮踩的坑：我原先实现的 `get(url, headers)` 是 HTTP GET，
+但 **Legado 里 HTTP GET 用 `java.ajax`，`java.get` 是取变量**。
+同名导致 `java.get('bid')` 走进了网络分支，报「不支持的协议 ''」。
+**错误的 `get(url, headers)` 已删除。**
+
+**4. `java.getString` 的求值上下文用 `try/finally` 还原。**
+
+`getString` 要拿「当前正在求值的上下文」取值，所以 adapter 记了一个
+`_current_context`。规则里可能再触发规则（嵌套），因此用
+`try/finally` 保存并还原 —— 否则内层求值会把外层的上下文**串味**。
+
+**5. `java.ajaxAll` 当前是串行实现（已知限制）。**
+
+sidecar 是**同步阻塞**模型（见 ADR-020），一次只能等一条响应。
+语义与 Legado 一致（返回 `[{body: () => text}]`），**但没有并发收益**。
+要并发需要 Python 侧支持同时挂起多个 host 请求，而当前协议是
+「一请求一响应」。真实书源里只用 4 处，**先保证正确，暂不优化**。
+
+**后果**
+
+- 好处：真实书源里频次最高的 5 个 API 全部可用。
+- 好处：`getString` 复用编译器，规则语义只有一份实现。
+- 好处：书源级变量按 adapter 天然隔离，无需额外生命周期管理。
+- 代价：`java.ajaxAll` 串行 —— 多个 URL 时耗时是累加的，不是取最大值。
+- 代价：命名冲突风险。adapter 里本就有个 `_variables(**extra)` **方法**
+  （模板变量），新加的实例字段一度把它覆盖（`TypeError: 'dict' object is
+  not callable`，连原有测试都挂）。**字段改名为 `_js_variables`** ——
+  同类冲突要在加字段时先搜一遍同名方法。
+
+**遗留**
+
+以下 API 真实书源里有用到但频次低，**尚未实现**，属于「已知且接受」：
+
+- `java.getElements` / `java.getStringList`（DOM 操作，Legado 的 `org.jsoup` 映射）
+- `java.aesBase64DecodeToString` / `java.base64DecodeToByteArray`
+- `java.getCookie`（L3）
+- `java.webView`（L3）
+
+---
+
 ## 待定决策
 
 | 议题 | 说明 |

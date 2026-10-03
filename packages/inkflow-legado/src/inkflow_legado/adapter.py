@@ -74,6 +74,13 @@ class LegadoSourceAdapter(BaseSourceAdapter):
         self.compiler = LegadoRuleCompiler()
         self._normalizer = ContentNormalizer()
 
+        #: 书源级变量（``java.put`` / ``java.get``）。生命周期跟着 adapter 走 ——
+        #: 书源常用它把 tocUrl 里算出的 bookId 传给 chapterUrl。
+        #: 注意别跟下面那个 ``_variables()`` **方法**（模板变量）重名。
+        self._js_variables: dict[str, str] = {}
+        #: 当前 JS 规则的求值上下文。``java.getString`` 靠它取值。
+        self._current_context: RuleContext | None = None
+
         # 预编译规则：编译一次，多次执行
         self._rule_search_list = self.compiler.compile(definition.ruleSearch.bookList)
         self._rule_search_fields = self.compiler.compile_many(
@@ -422,6 +429,10 @@ class LegadoSourceAdapter(BaseSourceAdapter):
             "result": context.data,
         }
 
+        # 记下上下文：java.getString 要拿它求值。
+        # 用 try/finally 还原 —— 嵌套调用（规则里再触发规则）时不能串味。
+        previous_context = self._current_context
+        self._current_context = context
         try:
             value = await self.js.eval(
                 code,
@@ -434,13 +445,62 @@ class LegadoSourceAdapter(BaseSourceAdapter):
                 code=ErrorCode.CONTENT_PARSE_FAILED,
                 details={"rule": rule.raw[:200], "kind": exc.kind},
             ) from exc
+        finally:
+            self._current_context = previous_context
 
         return None if value is None else str(value)
 
     async def _host_request(self, params: dict[str, Any]) -> dict[str, Any]:
-        """供 sidecar 里的 ``java.ajax`` 回调。
+        """处理 sidecar 回调的宿主请求。
 
-        网络请求回到这里发出，而不是让 sidecar 自己联网 —— 这样 SSRF 防护、
+        三类：
+
+        - ``getString`` —— 用规则从**当前上下文**取值（复用 Python 的求值能力）
+        - ``put`` / ``get`` —— 书源级变量
+        - 其余 —— 网络请求（``java.ajax``）
+        """
+        op = params.get("op")
+        if op == "getString":
+            return self._host_get_string(params)
+        if op == "put":
+            key = str(params.get("key", ""))
+            value = params.get("value")
+            self._js_variables[key] = "" if value is None else str(value)
+            return {"ok": True, "value": self._js_variables[key]}
+        if op == "get":
+            key = str(params.get("key", ""))
+            return {"ok": True, "value": self._js_variables.get(key, "")}
+
+        return await self._host_fetch(params)
+
+    def _host_get_string(self, params: dict[str, Any]) -> dict[str, Any]:
+        """``java.getString(rule)`` —— 用规则在当前上下文取值。
+
+        复用编译器的求值能力（含 ``!N`` 下标、隐式 JSONPath 等），
+        而不是在 JS 侧重造一套 —— 两套实现迟早会不一致。
+        """
+        context = self._current_context
+        if context is None:
+            return {"ok": False, "error": "没有可用的取值上下文"}
+
+        rule_text = str(params.get("rule", ""))
+        # Legado 的第二个参数传 false 表示「按字面量处理，不解析成规则」
+        if params.get("isRule") is False:
+            return {"ok": True, "value": rule_text}
+
+        try:
+            rule = self.compiler.compile(rule_text)
+            values = rule.evaluate(context)
+        except Exception as exc:
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+        # Legado 的 getString 返回单值，多条时取第一条
+        return {"ok": True, "value": values[0] if values else ""}
+
+    async def _host_fetch(self, params: dict[str, Any]) -> dict[str, Any]:
+        """``java.ajax`` 一类网络请求。
+
+        请求回到这里发出，而不是让 sidecar 自己联网 —— 这样 SSRF 防护、
         协议白名单、限速、缓存全部照旧生效。
         """
         if self.http is None:

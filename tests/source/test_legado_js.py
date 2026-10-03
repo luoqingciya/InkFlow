@@ -13,7 +13,7 @@ import json
 import pytest
 from inkflow_js_runtime import JsRuntime, find_node
 
-from inkflow_core.config import Settings
+from inkflow_core.config import JsConfig, Settings
 from inkflow_core.errors import SourceError
 from inkflow_legado import LegadoBookSource, LegadoSourceAdapter
 from inkflow_legado.rules import RuleContext
@@ -219,3 +219,185 @@ def _fake_source():
         source_type=SourceType.LEGADO,
         source_format=SourceFormat.LEGADO_JSON,
     )
+
+
+# ================================================================ 宿主取值 API
+#
+# 这几个是从真实书源集合里统计出来的高频 API（样本 1363 条）：
+#   java.getString 75 次、java.put 27 次、java.get 30 次
+
+
+def _js_adapter(js, source_def: dict):
+    """构造一个带 JS 运行时的适配器（不发网络请求）。"""
+    from inkflow_core.models import BookSource, SourceFormat, SourceType
+
+    definition = LegadoBookSource.model_validate(source_def)
+    source = BookSource(
+        id="src_js",
+        name="JS 测试",
+        url="https://example.com",
+        source_type=SourceType.LEGADO,
+        source_format=SourceFormat.LEGADO_JSON,
+    )
+    return LegadoSourceAdapter(source=source, definition=definition, http=None, js=js)
+
+
+@requires_node
+async def test_get_string_reads_json_path() -> None:
+    """`java.getString('$.x')` 从当前 JSON 上下文取值。"""
+    definition = {
+        "bookSourceName": "t",
+        "bookSourceUrl": "https://e.com",
+        "ruleBookInfo": {"name": "x"},
+    }
+    js = JsRuntime(JsConfig(enabled=True, timeout=5.0))
+    try:
+        adapter = _js_adapter(js, definition)
+        adapter._current_context = RuleContext(data={"bookId": "12345"})
+        result = await adapter._eval_js(
+            adapter.compiler.compile("@js:java.getString('$.bookId')"),
+            RuleContext(data={"bookId": "12345"}),
+        )
+    finally:
+        await js.close()
+
+    assert result == "12345"
+
+
+@requires_node
+async def test_get_string_reads_css_selector() -> None:
+    """同一 API 也能用 CSS 选择器从 HTML 取值。"""
+    from inkflow_source.parsers import html as html_parser
+
+    definition = {
+        "bookSourceName": "t",
+        "bookSourceUrl": "https://e.com",
+        "ruleBookInfo": {"name": "x"},
+    }
+    doc = html_parser.parse_html('<h1 class="title">三体</h1>')
+    js = JsRuntime(JsConfig(enabled=True, timeout=5.0))
+    try:
+        adapter = _js_adapter(js, definition)
+        result = await adapter._eval_js(
+            adapter.compiler.compile("@js:java.getString('h1.title@text')"),
+            RuleContext(doc=doc),
+        )
+    finally:
+        await js.close()
+
+    assert result == "三体"
+
+
+@requires_node
+async def test_get_string_missing_returns_empty() -> None:
+    """取不到值时返回空串，不是抛错 —— 书源里常用 `||` 兜底。"""
+    definition = {
+        "bookSourceName": "t",
+        "bookSourceUrl": "https://e.com",
+        "ruleBookInfo": {"name": "x"},
+    }
+    js = JsRuntime(JsConfig(enabled=True, timeout=5.0))
+    try:
+        adapter = _js_adapter(js, definition)
+        result = await adapter._eval_js(
+            adapter.compiler.compile("@js:java.getString('$.nope')"),
+            RuleContext(data={"bookId": "1"}),
+        )
+    finally:
+        await js.close()
+
+    assert result == ""
+
+
+@requires_node
+async def test_put_and_get_share_across_rules() -> None:
+    """`java.put` / `java.get` 是**书源级**变量，跨规则共享。
+
+    真实书源就是这么用的：`tocUrl` 里 put 一个 bookId，`chapterUrl` 里 get 出来。
+    """
+    definition = {
+        "bookSourceName": "t",
+        "bookSourceUrl": "https://e.com",
+        "ruleBookInfo": {"name": "x"},
+    }
+    js = JsRuntime(JsConfig(enabled=True, timeout=5.0))
+    try:
+        adapter = _js_adapter(js, definition)
+
+        await adapter._eval_js(
+            adapter.compiler.compile("@js:java.put('bid', '42')"),
+            RuleContext(data={}),
+        )
+        result = await adapter._eval_js(
+            adapter.compiler.compile("@js:java.get('bid')"),
+            RuleContext(data={}),
+        )
+    finally:
+        await js.close()
+
+    assert result == "42"
+
+
+@requires_node
+async def test_get_unknown_key_returns_empty() -> None:
+    definition = {
+        "bookSourceName": "t",
+        "bookSourceUrl": "https://e.com",
+        "ruleBookInfo": {"name": "x"},
+    }
+    js = JsRuntime(JsConfig(enabled=True, timeout=5.0))
+    try:
+        adapter = _js_adapter(js, definition)
+        result = await adapter._eval_js(
+            adapter.compiler.compile("@js:java.get('never-set')"),
+            RuleContext(data={}),
+        )
+    finally:
+        await js.close()
+
+    assert result == ""
+
+
+@requires_node
+async def test_variables_are_isolated_per_adapter() -> None:
+    """变量跟着 adapter 走，不同书源之间不串味。"""
+    definition = {
+        "bookSourceName": "t",
+        "bookSourceUrl": "https://e.com",
+        "ruleBookInfo": {"name": "x"},
+    }
+    js = JsRuntime(JsConfig(enabled=True, timeout=5.0))
+    try:
+        first = _js_adapter(js, definition)
+        second = _js_adapter(js, definition)
+
+        await first._eval_js(first.compiler.compile("@js:java.put('k', 'first')"), RuleContext())
+        result = await second._eval_js(second.compiler.compile("@js:java.get('k')"), RuleContext())
+    finally:
+        await js.close()
+
+    assert result == ""
+
+
+@requires_node
+async def test_to_num_chapter() -> None:
+    """中文数字转阿拉伯数字（样本里 20 处）。"""
+    definition = {
+        "bookSourceName": "t",
+        "bookSourceUrl": "https://e.com",
+        "ruleBookInfo": {"name": "x"},
+    }
+    js = JsRuntime(JsConfig(enabled=True, timeout=5.0))
+    try:
+        adapter = _js_adapter(js, definition)
+        cases = {"三": "3", "十二": "12", "二十四": "24", "一千零二十四": "1024"}
+        results = {
+            text: await adapter._eval_js(
+                adapter.compiler.compile(f"@js:java.toNumChapter('{text}')"), RuleContext()
+            )
+            for text in cases
+        }
+    finally:
+        await js.close()
+
+    assert results == cases

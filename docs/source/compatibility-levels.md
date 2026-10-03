@@ -34,7 +34,18 @@ L3  ⬜ 未实现（Milestone 4）
 
 **当前版本覆盖 L0 + L1 + L2（部分）。**
 
-L2 的 `@js:` 前缀已支持；`<js>` 标签、DOM 操作、cookie 管理尚未覆盖，
+L2 的 `@js:` 前缀已支持，宿主 API 已覆盖真实书源里频次最高的部分：
+
+```text
+网络    ajax（GET） / post / ajaxAll（串行）
+取值    getString（用规则从当前上下文取值）
+变量    put / get（书源级，跨规则共享）
+编码    base64Encode/Decode、md5Encode/16、hexEncode/Decode、digestHex
+其它    timeFormat、toNumChapter、log
+```
+
+尚未覆盖：`<js>` 标签写法、DOM 操作（`getElements` / `getStringList`）、
+`aesBase64Decode` 等加解密、cookie 管理（`getCookie`）、`webView`（L3）。
 详见 [roadmap](../development/roadmap.md#m3-js-runtime-l2)。
 
 ---
