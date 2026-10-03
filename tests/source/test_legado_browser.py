@@ -8,18 +8,23 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+
 import pytest
 
 from inkflow_browser_playwright import PlaywrightBrowserProvider
 from inkflow_core.browser import BrowserProvider
-from inkflow_core.config import BrowserConfig
+from inkflow_core.config import BrowserConfig, JsConfig
 from inkflow_core.errors import SourceError
+from inkflow_js_runtime import JsRuntime, find_node
 from inkflow_legado import LegadoSourceAdapter, build_legado_source
 from inkflow_source.http import HttpClient
 from tests.browser.stub import StubBrowserProvider
 from tests.sources_data import legado_source
 
 pytestmark = pytest.mark.source
+
+requires_node = pytest.mark.skipif(find_node() is None, reason="机器上没有 Node.js")
 
 
 class _RecordingBrowser(StubBrowserProvider):
@@ -38,7 +43,11 @@ class _RecordingBrowser(StubBrowserProvider):
         return await super().fetch_html(url, js=js, timeout=timeout)
 
 
-def _adapter(definition: dict, browser: BrowserProvider | None = None) -> LegadoSourceAdapter:
+def _adapter(
+    definition: dict,
+    browser: BrowserProvider | None = None,
+    js: JsRuntime | None = None,
+) -> LegadoSourceAdapter:
     """构造适配器。
 
     显式建 HTTP 客户端并放行内网 —— mock 站点跑在 127.0.0.1 上，
@@ -46,7 +55,20 @@ def _adapter(definition: dict, browser: BrowserProvider | None = None) -> Legado
     """
     source = build_legado_source(definition)
     http = HttpClient.from_source(source, allow_private_network=True)
-    return LegadoSourceAdapter.from_source(source, http, None, browser)
+    return LegadoSourceAdapter.from_source(source, http, js, browser)
+
+
+@pytest.fixture
+async def js_runtime() -> AsyncGenerator[JsRuntime]:
+    """真的 Node sidecar。
+
+    用完必须关 —— 否则子进程会留着，pytest 报 closed pipe 的 ResourceWarning。
+    """
+    runtime = JsRuntime(JsConfig(enabled=True, timeout=10.0))
+    try:
+        yield runtime
+    finally:
+        await runtime.close()
 
 
 # ================================================================ webView 选项
@@ -137,6 +159,68 @@ async def test_web_js_absent_keeps_plain_fetch(mock_site: str) -> None:
         await browser.close()
 
     assert browser.fetched == []
+
+
+# ================================================================ java.webView（宿主 API）
+
+
+@requires_node
+async def test_java_webview_round_trip(mock_site: str, js_runtime: JsRuntime) -> None:
+    """JS 里调 ``java.webView`` → Python 起浏览器 → 结果回传给 JS。
+
+    这是 L3 的另一半：把 ``webView`` 写在 URL 上只是其中一种写法，
+    真实书源里还有一批是写在 ``@js:`` 规则里调的。
+    """
+    definition = legado_source(mock_site)
+    definition["ruleBookInfo"]["name"] = (
+        f"@js: java.webView(null, '{mock_site}/book/1', null).length > 0 ? '拿到页面了' : '空'"
+    )
+    browser = _RecordingBrowser()
+    adapter = _adapter(definition, browser, js_runtime)
+    try:
+        info = await adapter.book_info(f"{mock_site}/book/1")
+    finally:
+        await browser.close()
+
+    assert info.name == "拿到页面了"
+    assert browser.fetched == [f"{mock_site}/book/1"]
+
+
+@requires_node
+async def test_java_webview_without_browser_is_visible(
+    mock_site: str, js_runtime: JsRuntime
+) -> None:
+    """没启用浏览器时，JS 规则要**失败得看得见**，不能返回空值。
+
+    返回空会让书源看起来「规则失效」，把配置问题伪装成解析问题。
+    """
+    definition = legado_source(mock_site)
+    definition["ruleBookInfo"]["name"] = f"@js: java.webView(null, '{mock_site}/book/1', null)"
+    adapter = _adapter(definition, None, js_runtime)
+
+    with pytest.raises(SourceError) as info:
+        await adapter.book_info(f"{mock_site}/book/1")
+
+    assert "浏览器" in str(info.value)
+
+
+@requires_node
+async def test_java_webview_rejects_html_argument(mock_site: str, js_runtime: JsRuntime) -> None:
+    """第一个参数传非 null 要**明确报错** —— 那是「渲染这段 HTML」的写法，没实现。"""
+    definition = legado_source(mock_site)
+    definition["ruleBookInfo"]["name"] = (
+        f"@js: java.webView('<p>x</p>', '{mock_site}/book/1', null)"
+    )
+    browser = _RecordingBrowser()
+    adapter = _adapter(definition, browser, js_runtime)
+    try:
+        with pytest.raises(SourceError) as info:
+            await adapter.book_info(f"{mock_site}/book/1")
+    finally:
+        await browser.close()
+
+    assert "不支持传入 HTML" in str(info.value)
+    assert browser.fetched == [], "参数不合法就不该去碰浏览器"
 
 
 # ================================================================ 真实引擎

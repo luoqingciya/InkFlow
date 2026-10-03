@@ -161,11 +161,21 @@ https://x/a,{'webView': true}          ← 单引号，Gson 能读，标准 json
 | 能力 | 等级 | 说明 |
 |---|---|---|
 | 登录态 / Cookie 注入 | L3 | 需要浏览器上下文 |
-| `java.webView(...)` 宿主 API | L3 | URL 选项形式的 `webView` 已支持，这个还没有 |
 | `webJs` 的完整语义 | L3 | 目前按「页面加载后在浏览器里跑这段脚本」处理 |
 | `ruleSearch.init` / `ruleBookInfo.init` | — | 详情页预处理规则 |
 
 遇到未支持的能力时，适配器会**明确报错并指出所需等级**，而不是静默降级。
+
+### `webView` 的两种写法
+
+| 写法 | 例子 | 状态 |
+|---|---|---|
+| **URL 选项** | `chapterUrl: "a@href##$##,{'webView': true}"` | 支持 |
+| **宿主 API** | `@js: java.webView(null, url, js)` | 支持 |
+
+宿主 API 的返回值就是渲染后的 HTML。第一个参数在真实书源里**恒为 `null`**；
+传非 null 表示「渲染这段 HTML 而不是去请求」，本实现不支持 —— 会**明确报错**，
+不当作没看见。
 
 ---
 

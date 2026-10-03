@@ -206,12 +206,17 @@ Python (Legado 适配器)
 | 可复用契约测试（跑在测试桩上，日常 CI 可跑） | ✅ |
 | Playwright 引擎包（`packages/inkflow-browser-playwright`） | ✅ |
 | `webView`（URL 选项形式）接到 Legado 适配器 | ✅ |
-| `java.webView(...)` 宿主 API（JS 规则里调的那种） | ⬜ |
+| `java.webView(...)` 宿主 API（JS 规则里调的那种） | ✅ |
 | 首次启用时的下载引导（API / CLI 里提示并触发安装） | ⬜ |
 | 真实浏览器用例的定时跑（先手动触发，看清成本再定） | ⬜ |
 
 `config.toml` 里的 `[browser]` 段已有 `enabled` / `engine` / `headless` /
 `timeout` / `install_dir`。
+
+**已知隐忧（没复现过，先记着）**：`java.webView` 是在 JS 求值**内部**触发
+浏览器启动的，冷启动要 1~3 秒，而 JS 求值本身有超时（`[js] timeout`，默认 10s）。
+慢机器上有可能把冷启动算进取值预算。真出问题时的方向是「求值前预热浏览器」——
+但**先要有能复现的手段**。
 
 ---
 
