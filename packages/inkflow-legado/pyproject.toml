@@ -8,6 +8,8 @@ license = "Apache-2.0"
 dependencies = [
     "inkflow-core",
     "inkflow-source",
+    # L2（@js: 规则）需要它；未启用时只是不实例化运行时，不是可选依赖
+    "inkflow-js-runtime",
     "pydantic>=2.9",
 ]
 

@@ -82,6 +82,9 @@ class Rule:
     mode: RuleMode = RuleMode.CSS
     selectors: list[str] = field(default_factory=list)
     json_path: str | None = None
+    #: JS 模式下的代码（已剥离 ``@js:`` 前缀）。单独存是因为 ``raw`` 含前缀，
+    #: 直接丢给 JS 引擎会语法错误。
+    code: str | None = None
     extract: str = "text"
     replacements: list[Replacement] = field(default_factory=list)
     fallbacks: list[Rule] = field(default_factory=list)

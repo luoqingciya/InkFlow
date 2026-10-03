@@ -211,7 +211,7 @@ export INKFLOW_HOME=/path/to/your/data
 
 - Python **3.12+**
 - [uv](https://docs.astral.sh/uv/)（Python 依赖与 workspace 管理）
-- Node.js **20+**（仅桌面端需要）
+- Node.js **20+**（桌面端需要；想用 L2 书源的 `@js:` 规则也需要）
 
 ### 安装
 

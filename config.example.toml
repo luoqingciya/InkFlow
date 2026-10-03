@@ -49,9 +49,12 @@ retry = 3
 allow_private_network = false
 
 [js]
-# Legado JS Source 执行沙箱（Milestone 3）。MVP 阶段此项无实际作用。
+# Legado JS Source 执行沙箱。需要机器上装有 Node.js 20+。
+# 关闭时遇到 @js: 规则会明确报错，而不是静默返回空。
 enabled = false
+# 单条规则执行超时（秒）。死循环会被打断。
 timeout = 15
+# sidecar 进程的内存上限（MB）。vm 管不了内存，靠进程级参数限制。
 max_memory_mb = 128
 max_requests = 50
 max_response_size = "8MB"

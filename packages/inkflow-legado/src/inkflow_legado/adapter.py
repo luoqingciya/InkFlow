@@ -1,8 +1,9 @@
 """Legado 书源适配器：执行编译后的规则 AST。
 
-**兼容边界**：本模块只实现 L0 + L1（JSON 结构 + CSS/XPath/JSONPath/正则）。
-规则里出现 ``@js:`` 或 ``<js>`` 时，编译不会失败，但执行时会抛出
-明确的 ``SOURCE_EXECUTION_ERROR`` —— 失败要看得见，不静默返回空结果。
+**兼容边界**：本模块实现 L0 + L1（JSON 结构 + CSS/XPath/JSONPath/正则）。
+L2 的 ``@js:`` 规则在**启用 JS 运行时**（``[js] enabled = true``）时交给
+Node sidecar 执行；未启用时抛 ``SOURCE_INVALID`` 并给出提示 ——
+**失败要看得见**，不能返回空让调用方以为「这个字段本来就没有」。
 """
 
 from __future__ import annotations
@@ -10,6 +11,8 @@ from __future__ import annotations
 import json
 from typing import Any
 from urllib.parse import urljoin
+
+from inkflow_js_runtime import JsRuntime, JsRuntimeError
 
 from inkflow_core.errors import ErrorCode, SourceError
 from inkflow_core.models import (
@@ -63,9 +66,11 @@ class LegadoSourceAdapter(BaseSourceAdapter):
         source: BookSource,
         definition: LegadoBookSource,
         http: HttpClient | None = None,
+        js: JsRuntime | None = None,
     ) -> None:
         super().__init__(source, http)
         self.definition = definition
+        self.js = js
         self.compiler = LegadoRuleCompiler()
         self._normalizer = ContentNormalizer()
 
@@ -110,12 +115,18 @@ class LegadoSourceAdapter(BaseSourceAdapter):
         )
 
     @classmethod
-    def from_source(cls, source: BookSource, http: HttpClient | None = None) -> LegadoSourceAdapter:
+    def from_source(
+        cls,
+        source: BookSource,
+        http: HttpClient | None = None,
+        js: JsRuntime | None = None,
+    ) -> LegadoSourceAdapter:
         """从已入库的书源定义构建适配器。
 
         Args:
             source: 书源定义。
             http: 由注册表注入的 HTTP 客户端；省略时按书源配置惰性创建。
+            js: 共享的 JS 运行时（``[js] enabled = true`` 时由装配层注入）。
         """
         try:
             definition = LegadoBookSource.model_validate(source.raw)
@@ -125,7 +136,7 @@ class LegadoSourceAdapter(BaseSourceAdapter):
                 code=ErrorCode.SOURCE_INVALID,
                 details={"source_id": source.id},
             ) from exc
-        return cls(source, definition, http)
+        return cls(source, definition, http, js)
 
     # -- 请求辅助 ----------------------------------------------------------
 
@@ -236,11 +247,13 @@ class LegadoSourceAdapter(BaseSourceAdapter):
             results.append(
                 BookResult(
                     name=name,
-                    author=self._field(self._rule_search_fields, "author", context),
-                    intro=self._field(self._rule_search_fields, "intro", context),
-                    cover_url=self._field(self._rule_search_fields, "cover_url", context),
-                    category=self._field(self._rule_search_fields, "category", context),
-                    latest_chapter=self._field(self._rule_search_fields, "latest_chapter", context),
+                    author=await self._field(self._rule_search_fields, "author", context),
+                    intro=await self._field(self._rule_search_fields, "intro", context),
+                    cover_url=await self._field(self._rule_search_fields, "cover_url", context),
+                    category=await self._field(self._rule_search_fields, "category", context),
+                    latest_chapter=await self._field(
+                        self._rule_search_fields, "latest_chapter", context
+                    ),
                     book_url=book_url,
                 )
             )
@@ -255,13 +268,13 @@ class LegadoSourceAdapter(BaseSourceAdapter):
         context = RuleContext(doc=doc, base_url=book_url)
 
         return BookResult(
-            name=self._field(self._rule_book_fields, "name", context) or "",
-            author=self._field(self._rule_book_fields, "author", context),
-            intro=self._field(self._rule_book_fields, "intro", context),
-            cover_url=self._field(self._rule_book_fields, "cover_url", context),
-            category=self._field(self._rule_book_fields, "category", context),
-            latest_chapter=self._field(self._rule_book_fields, "latest_chapter", context),
-            word_count=_to_int(self._field(self._rule_book_fields, "word_count", context)),
+            name=await self._field(self._rule_book_fields, "name", context) or "",
+            author=await self._field(self._rule_book_fields, "author", context),
+            intro=await self._field(self._rule_book_fields, "intro", context),
+            cover_url=await self._field(self._rule_book_fields, "cover_url", context),
+            category=await self._field(self._rule_book_fields, "category", context),
+            latest_chapter=await self._field(self._rule_book_fields, "latest_chapter", context),
+            word_count=_to_int(await self._field(self._rule_book_fields, "word_count", context)),
             book_url=book_url,
         )
 
@@ -291,8 +304,8 @@ class LegadoSourceAdapter(BaseSourceAdapter):
 
             for node in self._rule_toc_list.select_nodes(doc):
                 context = RuleContext(doc=node, base_url=base_url)
-                name = self._field(self._rule_toc_fields, "name", context)
-                url = self._field(self._rule_toc_fields, "url", context)
+                name = await self._field(self._rule_toc_fields, "name", context)
+                url = await self._field(self._rule_toc_fields, "url", context)
                 if not name or not url or url in {c.url for c in chapters}:
                     continue
                 chapters.append(
@@ -300,7 +313,9 @@ class LegadoSourceAdapter(BaseSourceAdapter):
                         index=len(chapters),
                         name=name,
                         url=url,
-                        is_vip=_to_bool(self._field(self._rule_toc_fields, "is_vip", context)),
+                        is_vip=_to_bool(
+                            await self._field(self._rule_toc_fields, "is_vip", context)
+                        ),
                     )
                 )
 
@@ -364,13 +379,87 @@ class LegadoSourceAdapter(BaseSourceAdapter):
 
     # -- 内部 --------------------------------------------------------------
 
-    @staticmethod
-    def _field(rules: dict[str, Rule], name: str, context: RuleContext) -> str | None:
-        """取某个字段的值；规则缺失时返回 ``None``。"""
+    async def _field(self, rules: dict[str, Rule], name: str, context: RuleContext) -> str | None:
+        """取某个字段的值；规则缺失时返回 ``None``。
+
+        ``@js:`` 规则要跑 Node sidecar，所以这里是异步的 —— 其余模式
+        仍是同步求值，只是被包在同一个入口里。
+        """
         rule = rules.get(name)
-        if rule is None or rule.mode is RuleMode.JS:
+        if rule is None:
             return None
+        if rule.mode is RuleMode.JS:
+            return await self._eval_js(rule, context)
         return rule.evaluate_one(context)
+
+    async def _eval_js(self, rule: Rule, context: RuleContext) -> str | None:
+        """执行 ``@js:`` 规则。
+
+        Raises:
+            SourceError: 未启用 JS 运行时，或执行失败。
+                未启用时**明确报错**而不是返回空 —— 返回空会让调用方以为
+                「这个字段本来就没有」，把配置问题伪装成解析问题。
+        """
+        if self.js is None:
+            # 解法写进 message 而不是只放 details —— 用户看到的是 message，
+            # 只说「未启用」而不说「怎么启用」等于没帮上忙。
+            raise SourceError(
+                f"规则需要 JS 运行时，但未启用：{rule.raw[:120]}\n"
+                f"在 config.toml 的 [js] 段设置 enabled = true 后重启服务。",
+                code=ErrorCode.SOURCE_INVALID,
+                details={
+                    "rule": rule.raw[:200],
+                    "hint": "config.toml 的 [js] 段设置 enabled = true",
+                },
+            )
+
+        code = rule.code or ""
+        if not code:
+            return None
+
+        variables = {
+            "baseUrl": context.base_url,
+            "result": context.data,
+        }
+
+        try:
+            value = await self.js.eval(
+                code,
+                variables=variables,
+                host_request=self._host_request,
+            )
+        except JsRuntimeError as exc:
+            raise SourceError(
+                f"JS 规则执行失败（{exc.kind}）：{exc}",
+                code=ErrorCode.CONTENT_PARSE_FAILED,
+                details={"rule": rule.raw[:200], "kind": exc.kind},
+            ) from exc
+
+        return None if value is None else str(value)
+
+    async def _host_request(self, params: dict[str, Any]) -> dict[str, Any]:
+        """供 sidecar 里的 ``java.ajax`` 回调。
+
+        网络请求回到这里发出，而不是让 sidecar 自己联网 —— 这样 SSRF 防护、
+        协议白名单、限速、缓存全部照旧生效。
+        """
+        if self.http is None:
+            return {"ok": False, "error": "该书源没有 HTTP 客户端"}
+
+        url = str(params.get("url", ""))
+        method = str(params.get("method", "GET")).upper()
+        body = params.get("body")
+        headers = params.get("headers") or None
+
+        try:
+            response = await self.http.request(method, url, data=body, headers=headers)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+        if not response.ok:
+            return {"ok": False, "error": f"HTTP {response.status}"}
+
+        return {"ok": True, "body": response.text}
 
 
 def _to_int(value: str | None) -> int | None:
