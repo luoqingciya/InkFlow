@@ -14,6 +14,16 @@ concurrency:
 permissions:
   contents: read
 
+# 显式用官方索引，绕开 uv.lock 里写死的国内镜像。
+#
+# uv 下载时**直接用 lock 里记录的 URL**，索引配置盖不住它 —— 镜像偶发 403
+# 就会让 job 直接红，而且看起来像代码问题（2026-10-03 真发生过）。
+# 设了这个变量，uv 会重新解析并按官方源下载。
+#
+# 本机不受影响（那边仍走镜像，快）。详见 docs/development/cicd.md。
+env:
+  UV_DEFAULT_INDEX: https://pypi.org/simple
+
 jobs:
   python:
     name: Python · ${{ matrix.os }}

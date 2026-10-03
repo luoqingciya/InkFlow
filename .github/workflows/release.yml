@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+# 显式用官方索引，绕开 uv.lock 里写死的国内镜像（理由见 ci.yml 与 cicd.md）。
+env:
+  UV_DEFAULT_INDEX: https://pypi.org/simple
+
 jobs:
   # ---------------------------------------------------------------- 后端
   backend:
