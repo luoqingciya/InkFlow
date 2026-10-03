@@ -152,10 +152,12 @@ class LegadoBookSource(_LenientModel):
     def explore_enabled(self) -> bool:
         return bool(self.exploreUrl.strip())
 
-    def uses_js(self) -> bool:
-        """书源是否含 JavaScript（决定兼容等级）。
+    def _rule_texts(self) -> list[str]:
+        """收集所有可能写规则的字段值，供等级判定用。
 
-        规则里出现 ``<js>`` 标签或 ``@js:`` 前缀即视为需要 JS 运行时。
+        只扫**规则字段**：``searchUrl`` / ``exploreUrl`` / ``loginCheckJs``
+        与四个规则组。不扫 ``bookSourceComment`` 一类的说明性字段 ——
+        注释里出现 ``java.`` 或 ``webView`` 不该改变书源等级。
         """
         haystacks: list[str] = [
             self.searchUrl,
@@ -168,13 +170,26 @@ class LegadoBookSource(_LenientModel):
             haystacks.extend(
                 str(value) for value in rule.model_dump().values() if isinstance(value, str)
             )
+        return [text for text in haystacks if text]
+
+    def uses_js(self) -> bool:
+        """书源是否含 JavaScript（决定兼容等级）。
+
+        规则里出现 ``<js>`` 标签或 ``@js:`` 前缀即视为需要 JS 运行时。
+        """
         return any(
-            "<js>" in text or "@js:" in text or "java." in text for text in haystacks if text
+            "<js>" in text or "@js:" in text or "java." in text for text in self._rule_texts()
         )
 
     def needs_browser(self) -> bool:
-        """书源是否声明需要浏览器渲染。"""
-        return "webView" in self.ruleToc.preUpdateJs or "webView" in self.ruleContent.webJs
+        """书源是否声明需要浏览器渲染。
+
+        Legado 用 ``webView`` 标记「这个地址要走浏览器加载」。它出现在
+        **URL 类规则**里（``ruleToc.chapterUrl`` / ``searchUrl`` /
+        ``ruleSearch.bookUrl`` 等），而**不是** ``preUpdateJs`` / ``webJs``
+        —— 所以判定必须扫全部规则字段，只看那两个字段会一个都检不出来。
+        """
+        return any("webView" in text for text in self._rule_texts())
 
     def raw_dict(self) -> dict[str, Any]:
         """还原为字典（含未知字段），用于持久化。"""

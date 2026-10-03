@@ -76,6 +76,70 @@ def test_level_detection_marks_js_sources_as_l2() -> None:
     assert source.compatibility_level is CompatibilityLevel.L2
 
 
+def test_level_detection_marks_webview_sources_as_l3() -> None:
+    """``webView`` 出现在 **URL 类规则**里 —— 那才是 Legado 标记「走浏览器」的写法。
+
+    真实书源里 ``webView`` 落在 ``ruleToc.chapterUrl`` / ``searchUrl`` /
+    ``ruleSearch.bookUrl`` 等处，**不在** ``preUpdateJs`` / ``webJs``。
+    只查后两个字段会一条都检不出来（实测 1363 条书源漏检 70 条）。
+    """
+    source = build_legado_source(
+        {
+            "bookSourceName": "浏览器书源",
+            "bookSourceUrl": "https://x.test",
+            "ruleToc": {"chapterUrl": "webView"},
+        }
+    )
+
+    assert source.compatibility_level is CompatibilityLevel.L3
+    assert source.meta.requires_browser is True
+
+
+@pytest.mark.parametrize(
+    "rule_fields",
+    [
+        {"searchUrl": "webView"},
+        {"ruleSearch": {"bookUrl": "webView"}},
+        {"ruleContent": {"nextContentUrl": "webView"}},
+        {"ruleBookInfo": {"tocUrl": "webView"}},
+    ],
+)
+def test_webview_is_detected_in_each_url_rule(rule_fields: dict) -> None:
+    """真实书源里出现过 webView 的几个位置都要能检出来。"""
+    source = build_legado_source(
+        {"bookSourceName": "X", "bookSourceUrl": "https://x.test", **rule_fields}
+    )
+
+    assert source.compatibility_level is CompatibilityLevel.L3
+
+
+def test_comment_mentioning_webview_is_not_l3() -> None:
+    """注释里提到 webView 不算需要浏览器 —— 别把说明文字当规则。"""
+    source = build_legado_source(
+        {
+            "bookSourceName": "X",
+            "bookSourceUrl": "https://x.test",
+            "bookSourceComment": "本源自带 webView 说明",
+            "ruleSearch": {"bookList": ".book"},
+        }
+    )
+
+    assert source.compatibility_level is CompatibilityLevel.L1
+
+
+def test_js_source_is_not_l3() -> None:
+    """L2 与 L3 不能互相盖 —— 有 JS 但没 webView 仍是 L2。"""
+    source = build_legado_source(
+        {
+            "bookSourceName": "X",
+            "bookSourceUrl": "https://x.test",
+            "ruleToc": {"chapterUrl": "@js:'https://x.test/' + id"},
+        }
+    )
+
+    assert source.compatibility_level is CompatibilityLevel.L2
+
+
 def test_stable_source_id_is_deterministic(source_def: dict) -> None:
     """同一书源重复导入得到同一 ID，导入因此是幂等的。"""
     first = build_legado_source(source_def)
