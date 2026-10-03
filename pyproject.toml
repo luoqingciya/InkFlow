@@ -37,6 +37,7 @@ inkflow-api = { workspace = true }
 inkflow-cli = { workspace = true }
 inkflow-export = { workspace = true }
 inkflow-js-runtime = { workspace = true }
+inkflow-browser-playwright = { workspace = true }
 
 [dependency-groups]
 dev = [
@@ -48,6 +49,12 @@ dev = [
     "types-pyyaml>=6.0",
     # 打包后端为单文件可执行程序（Release 流程用）
     "pyinstaller>=6.11",
+]
+# 验证 Playwright 引擎用。引擎包把 playwright 列为**可选** extra（ADR-024），
+# 所以默认的 `uv sync --all-packages` 不会白白多拉 105MB。
+# 版本下限要与 packages/inkflow-browser-playwright 里的 extra 保持一致。
+browser = [
+    "playwright>=1.49",
 ]
 
 # ---------------------------------------------------------------- ruff
@@ -103,7 +110,9 @@ show_error_codes = true
 exclude = ["desktop/", "\\.venv/"]
 
 [[tool.mypy.overrides]]
-module = ["lxml.*", "jsonpath_ng.*"]
+# playwright 是**可选**依赖（ADR-024）：日常 CI 不装它，得允许导入缺失。
+# 装了就照常检查，不是无条件跳过。
+module = ["lxml.*", "jsonpath_ng.*", "playwright.*"]
 ignore_missing_imports = true
 
 # 测试代码放宽：pytest 的 fixture 参数靠注入，逐个标注类型只会增加噪音，
@@ -118,11 +127,14 @@ disallow_untyped_defs = false
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-addopts = "-q --strict-markers"
+# 默认不跑需要真实浏览器的用例（ADR-024 的 CI 分层：日常只跑接口与桩）。
+# 要跑它们：uv run pytest -m browser
+addopts = "-q --strict-markers -m 'not browser'"
 markers = [
     "unit: 单元测试",
     "integration: 集成测试",
     "source: 书源兼容性测试",
     "e2e: 端到端测试",
     "network: 需要真实网络访问",
+    "browser: 需要真实浏览器（本地装了 Playwright 才跑，日常 CI 跳过）",
 ]

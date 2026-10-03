@@ -1,0 +1,55 @@
+name: Browser
+
+# 真实浏览器测试。要下约 270MB，所以**不进日常 CI**（ADR-024 的 CI 分层）：
+# 日常只跑接口与桩，真实引擎在这里跑。
+#
+# 先只开手动触发 —— 跑几次看清耗时与稳定性，再决定要不要加 schedule。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser:
+    name: 真实浏览器 · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # 浏览器安装路径的分支在各平台上不一样，两个都要覆盖。
+        os: [ubuntu-latest, windows-latest]
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: 设定浏览器目录
+        # runner 上下文在 job 级 env 里不可用，只能在这一步写进 GITHUB_ENV。
+        # 放 runner 临时目录：不污染工作区，路径也可预期（好做缓存）。
+        shell: bash
+        run: echo "PLAYWRIGHT_BROWSERS_PATH=${{ runner.temp }}/pw-browsers" >> "$GITHUB_ENV"
+
+      - name: 缓存浏览器
+        # 浏览器版本与 playwright 版本严格绑定，所以键里带上 uv.lock。
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: pw-browsers-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+
+      - name: 同步依赖（含 browser 组）
+        run: uv sync --all-packages --group browser
+
+      - name: 安装浏览器
+        # --no-sync：上面刚同步过，别让 uv run 再同步一遍把 browser 组剔掉
+        run: uv run --no-sync python -m playwright install chromium-headless-shell
+
+      - name: 契约测试（真实引擎）
+        run: uv run --no-sync pytest -q -m browser

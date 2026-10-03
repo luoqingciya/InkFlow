@@ -153,6 +153,9 @@ class BrowserConfig(BaseModel):
     engine: str = "playwright"
     headless: bool = True
     timeout: float = Field(default=30.0, gt=0)
+    #: 浏览器安装目录。留空表示用 ``<数据目录>/browsers``。
+    #: 多份安装想共享同一份浏览器时指向同一个目录。
+    install_dir: str = ""
 
 
 class LogConfig(BaseModel):
