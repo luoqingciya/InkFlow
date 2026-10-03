@@ -178,9 +178,10 @@ Python (Legado 适配器)
 
 **引擎已定**（[ADR-024](../architecture/decisions.md)）：
 
-- **接口在 core，引擎由外层注册** —— `BrowserProvider` 协议
-  （`open` / `navigate` / `evaluate` / `html` / `cookies` / `close`），
+- **接口在 core，引擎由外层注册** —— `BrowserProvider` 协议：
+  `start` / `close` / `fetch_html(url, js=...)` / `cookies`，
   与 `SourceRegistry.register_factory()` 同一套思路
+  （接口形状的取舍见 ADR-024）
 - **默认分发不带浏览器**，首次启用时按需下载 headless 浏览器
 - **未安装时明确报错并把解法写进 message**，不静默降级
 

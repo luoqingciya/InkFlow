@@ -6,6 +6,14 @@
 
 from typing import TYPE_CHECKING
 
+from inkflow_core.browser import (
+    BrowserError,
+    BrowserFactory,
+    BrowserProvider,
+    BrowserRegistry,
+    BrowserUnavailableError,
+    default_browser_registry,
+)
 from inkflow_core.config import Settings, get_settings, parse_size
 from inkflow_core.errors import ErrorCode, InkFlowError, NotFoundError, SourceError, TaskError
 from inkflow_core.log import JsonFormatter, setup_logging
@@ -70,6 +78,13 @@ if TYPE_CHECKING:
 
 __all__ = [
     "__version__",
+    # browser
+    "BrowserError",
+    "BrowserFactory",
+    "BrowserProvider",
+    "BrowserRegistry",
+    "BrowserUnavailableError",
+    "default_browser_registry",
     # models
     "Book",
     "BookResult",
