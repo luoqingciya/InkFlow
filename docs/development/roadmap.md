@@ -172,12 +172,24 @@ Python (Legado 适配器)
 
 ## M4 Browser Runtime ⬜
 
-**目标**：支持需要渲染 / 登录 / Cookie 的站点。
+**目标**：支持需要渲染 / 登录 / Cookie 的站点（L3）。
 
-- 独立 `BrowserService`，不在 Downloader 里内联
-- 引擎：Playwright 或 Electron
-- 接口：`open` / `navigate` / `evaluate` / `html` / `cookies` / `close`
-- **只在书源明确声明需要时启用**，不作为默认路径
+**需求规模**：1363 条真实书源里 **L3 占 5.0%（68 条）** —— 真实，但不大。
+
+**引擎已定**（[ADR-024](../architecture/decisions.md)）：
+
+- **接口在 core，引擎由外层注册** —— `BrowserProvider` 协议
+  （`open` / `navigate` / `evaluate` / `html` / `cookies` / `close`），
+  与 `SourceRegistry.register_factory()` 同一套思路
+- **默认分发不带浏览器**，首次启用时按需下载 headless 浏览器
+- **未安装时明确报错并把解法写进 message**，不静默降级
+
+**为什么不是内嵌**：实测 Playwright 包 105 MB + headless Chromium 271 MB
+≈ **376 MB**，而后端现在是 **28 MB 单文件 exe** —— 13 倍量级。
+为 5% 的书源让 100% 的用户多下这么多，不划算。
+
+**动工前要先定**：CI 怎么验（下 270 MB 太重）、下载源与镜像、
+下载物放哪（数据目录 vs 系统缓存）。
 
 `config.toml` 里的 `[browser]` 段已预留配置项。
 
