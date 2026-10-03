@@ -85,6 +85,23 @@ ubuntu runner 上没有显示服务，`BrowserWindow` 起不来，所以套 `xvf
 
 含下 271MB —— GitHub 的网快，缓存也帮得上。**成本低到可以每天跑。**
 
+### ⚠️ CI 因「下载失败」而红时，先看是不是镜像
+
+`uv.lock` 里的下载 URL **写死了清华镜像**（916 处，见下）。镜像偶发 403 时，
+`uv sync` 会失败、job 直接红 —— 看起来像代码问题，其实不是。
+
+```text
+error: Failed to download `ruff==0.16.10`
+  cause: HTTP status client error (403 Forbidden) for url (https://pypi.tuna.tsinghua.edu.cn/...)
+```
+
+**处理**：确认报错里是 `pypi.tuna` + 4xx/5xx，就 `gh run rerun <id> --failed`。
+**别去改代码。**
+
+> 已知的结构性问题，还没动：lock 写死镜像 ⇒ CI 依赖它；而本机连不上
+> `pypi.org`（实测超时），所以镜像又不能简单去掉。要改得先验证
+> 「lock 用官方源 + 本机用 `UV_DEFAULT_INDEX` 指镜像」这条路走不走得通。
+
 ---
 
 ## Release
