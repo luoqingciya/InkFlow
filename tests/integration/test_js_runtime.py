@@ -102,6 +102,42 @@ async def test_time_format(runtime: JsRuntime) -> None:
     assert result[4] == "-" and result[13] == ":"
 
 
+# ================================================================ 响应大小
+
+
+@requires_node
+async def test_large_response_is_returned() -> None:
+    """响应超过 64KB 也要能拿到。
+
+    书源规则完全可能返回一整页 HTML 或一段长 JSON —— 而 asyncio 的
+    StreamReader 默认行长上限只有 64KB，不调大就会在 readline 直接抛错。
+    """
+    js = JsRuntime(JsConfig(enabled=True, timeout=5.0))
+    try:
+        result = await js.eval("'x'.repeat(200000)")
+    finally:
+        await js.close()
+
+    assert isinstance(result, str)
+    assert len(result) == 200000
+
+
+@requires_node
+async def test_oversized_response_is_reported() -> None:
+    """超过 max_response_size 要报明确错误，而不是漏出 ValueError。
+
+    ``max_response_size`` 是可配的；配了就必须真的生效，且失败要看得见。
+    """
+    js = JsRuntime(JsConfig(enabled=True, timeout=5.0, max_response_size="64KB"))
+    try:
+        with pytest.raises(JsRuntimeError) as info:
+            await js.eval("'x'.repeat(200000)")
+    finally:
+        await js.close()
+
+    assert info.value.kind == "too_large"
+
+
 # ================================================================ 沙箱隔离
 
 
