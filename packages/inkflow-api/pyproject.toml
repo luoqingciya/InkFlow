@@ -11,8 +11,10 @@ dependencies = [
     "inkflow-legado",
     "inkflow-export",
     # 浏览器引擎由装配层显式注册（ADR-024）。
-    # 这个包本身不重 —— playwright 是它的**可选** extra，默认不装。
+    # 这两个包本身都不重 —— playwright 是前者的**可选** extra，默认不装。
     "inkflow-browser-playwright",
+    # 桌面端引擎：后端通过它跟 Electron 的浏览器桥说话
+    "inkflow-browser-electron",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",

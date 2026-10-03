@@ -8,12 +8,14 @@
  * Renderer 也拿不到 Node 权限，只能通过 preload 暴露的白名单接口访问。
  */
 
+import { randomBytes } from 'node:crypto'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, shell } from 'electron'
 
 import { BackendProcess, type BackendConnection } from './backend'
+import { startBrowserBridge, type BrowserBridge } from './browser-bridge'
 
 /**
  * 最早的启动标记。
@@ -38,6 +40,9 @@ function markBoot(stage: string): void {
 markBoot('main-module-loaded')
 
 const backend = new BackendProcess()
+
+/** 浏览器桥。后端靠它用上桌面端自带的 Chromium（ADR-024）。 */
+let browserBridge: BrowserBridge | null = null
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 
@@ -184,11 +189,24 @@ app.whenReady().then(async () => {
   markBoot('when-ready')
   registerIpc()
 
+  // 浏览器桥要在 spawn 后端**之前**起来 —— 地址是当环境变量传进去的，
+  // 反过来的话后端拿不到端口，桌面端这条 L3 路径就断了。
+  // 桥起不来不该阻断启动：需要浏览器的书源会明确报错，其余照常。
+  try {
+    browserBridge = await startBrowserBridge({ token: randomBytes(24).toString('hex') })
+    console.log(`[inkflow] 浏览器桥就绪 ${browserBridge.url}`)
+  } catch (error) {
+    console.error('[inkflow] 浏览器桥启动失败：', error)
+  }
+
   // 后端启动失败不阻断窗口创建：界面会展示错误与重试入口，
   // 总好过用户面对一个什么都不显示的白屏。
   try {
     const connection = await backend.start({
-      cwd: app.isPackaged ? process.resourcesPath : join(__dirname, '../../..')
+      cwd: app.isPackaged ? process.resourcesPath : join(__dirname, '../../..'),
+      browserBridge: browserBridge
+        ? { url: browserBridge.url, token: browserBridge.token }
+        : undefined
     })
     console.log(`[inkflow] 后端就绪 ${connection.baseUrl}`)
   } catch (error) {
@@ -227,5 +245,10 @@ app.on('before-quit', async (event) => {
   shuttingDown = true
   event.preventDefault()
   await backend.stop()
+  // 桥要等后端停了再关：反过来后端可能正卡在一次渲染请求上
+  if (browserBridge) {
+    await browserBridge.close()
+    browserBridge = null
+  }
   app.exit(0)
 })

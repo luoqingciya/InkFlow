@@ -81,6 +81,13 @@ export interface BackendStartOptions {
   noToken?: boolean
   /** 工作目录（开发时为仓库根目录） */
   cwd?: string
+  /**
+   * 浏览器桥。桌面端通过它把自带的 Chromium 借给后端（ADR-024）。
+   *
+   * 用环境变量而不是文件：桥的端口是**桌面端先起、再 spawn 后端**拿到的，
+   * 直接传进去就没有「后端去读文件时文件还没写」这种竞态。
+   */
+  browserBridge?: { url: string; token: string }
 }
 
 interface LaunchSpec {
@@ -217,6 +224,15 @@ export class BackendProcess {
       env: {
         ...process.env,
         INKFLOW_HOME: dataHome,
+        // 浏览器桥的地址。没起桥时不给这两个变量 ——
+        // 后端那边 engine = "electron" 会明确报「没有可用的桥」，
+        // 而不是连到一个不存在的端口上。
+        ...(options.browserBridge
+          ? {
+              INKFLOW_BROWSER_BRIDGE: options.browserBridge.url,
+              INKFLOW_BROWSER_TOKEN: options.browserBridge.token
+            }
+          : {}),
         // 不缓冲输出，否则握手行要等缓冲区满才吐出来
         PYTHONUNBUFFERED: '1',
         // 本机回环请求不该走系统代理

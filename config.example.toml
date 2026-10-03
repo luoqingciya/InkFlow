@@ -68,6 +68,8 @@ max_response_size = "8MB"
 # 引擎与浏览器本体都**按需安装**，默认分发不带它们（ADR-024）。
 enabled = false
 engine = "playwright"     # playwright | electron
+# playwright —— 自己下载 headless Chromium（约 270MB），需要 pip 环境
+# electron   —— 用桌面端自带的 Chromium，只在**桌面端启动的后端**里可用
 headless = true
 timeout = 30
 # 浏览器安装目录。留空表示用 <数据目录>/browsers。

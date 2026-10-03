@@ -28,12 +28,20 @@ Release ── ① 后端打包（三平台）+ 冒烟测试
 | Job | 内容 |
 |---|---|
 | `python` | 矩阵 `ubuntu-latest` + `windows-latest`：版本号一致性 → `ruff check` → `ruff format --check` → `mypy` → `pytest` |
-| `desktop` | `npm ci` → 主进程/preload 类型检查 → 渲染进程类型检查 → `npm run build` |
+| `desktop` | `npm ci` → 主进程/preload 类型检查 → 渲染进程类型检查 → `npm run build` → 浏览器桥冒烟测试 |
 
 ### 为什么 Python 要跑两个平台
 
 Windows 是主要分发目标，Linux 覆盖 CI 常见环境。两个都跑是为了提前发现
 路径分隔符、行尾、文件名大小写敏感这类只在特定平台暴露的差异。
+
+### 桌面端为什么要跑冒烟测试
+
+`npm run smoke:bridge` 起的是**真的 Electron 主进程 + 真的 `BrowserWindow`** ——
+它验的是「后端借桌面端 Chromium」那座桥（ADR-024）。类型检查看不出
+「窗口能不能开、脚本有没有在页面里跑」，而这些只有真跑才知道。
+
+ubuntu runner 上没有显示服务，`BrowserWindow` 起不来，所以套 `xvfb-run`。
 
 ### 为什么版本号检查放在最前面
 

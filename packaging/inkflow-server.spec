@@ -28,6 +28,11 @@ for package in (
     "inkflow_legado",
     "inkflow_export",
     "inkflow_api",
+    # 浏览器引擎包是**显式列出来**的：它们是可选依赖，静态分析不一定抓得到，
+    # 而且冻结构建里没法再补装。桌面端那条路（electron）尤其需要 ——
+    # 它靠的就是这份代码去跟 Electron 的浏览器桥说话。
+    "inkflow_browser_playwright",
+    "inkflow_browser_electron",
 ):
     package_datas, package_binaries, package_hidden = collect_all(package)
     datas += package_datas
