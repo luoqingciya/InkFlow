@@ -42,6 +42,30 @@ Windows 是主要分发目标，Linux 覆盖 CI 常见环境。两个都跑是�
 
 ---
 
+## Browser（真实浏览器测试）
+
+文件：`.github/workflows/browser.yml`
+
+触发：**仅手动**（`workflow_dispatch`）。
+
+| Job | 内容 |
+|---|---|
+| `browser` | 矩阵 `ubuntu-latest` + `windows-latest`：装 `browser` 依赖组 → 下 headless Chromium → `pytest -m browser` |
+
+### 为什么不进日常 CI
+
+它要下**约 270MB** 浏览器（实测），而且两个平台各一份。日常 CI 只跑接口与桩
+（`BrowserProvider` 契约、未安装时的报错、配置开关）—— 那些不需要真浏览器。
+
+落到配置上就是：`pytest` 的 `addopts` 默认排除 `browser` 标记的用例。
+
+### 为什么先只开手动触发
+
+还没跑过几次，**不知道它要多久、稳不稳**。看清成本再决定要不要加 `schedule` ——
+先排上定时任务，等发现它天天慢或天天抖再改，不如先手动跑几轮。
+
+---
+
 ## Release
 
 文件：`.github/workflows/release.yml`

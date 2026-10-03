@@ -198,7 +198,19 @@ Python (Legado 适配器)
 - **存放位置** —— `<数据目录>/browsers/`，与 ADR-015 的便携原则一致；
   另给覆盖项让想共享的用户自己指定
 
-`config.toml` 里的 `[browser]` 段已预留配置项。
+**进度**
+
+| 步骤 | 状态 |
+|---|---|
+| `BrowserProvider` 接口 + 注册表（core） | ✅ |
+| 可复用契约测试（跑在测试桩上，日常 CI 可跑） | ✅ |
+| Playwright 引擎包（`packages/inkflow-browser-playwright`） | ✅ |
+| `webView` 接到 Legado 适配器 | ⬜ |
+| 首次启用时的下载引导（API / CLI 里提示并触发安装） | ⬜ |
+| 真实浏览器用例的定时跑（先手动触发，看清成本再定） | ⬜ |
+
+`config.toml` 里的 `[browser]` 段已有 `enabled` / `engine` / `headless` /
+`timeout` / `install_dir`。
 
 ---
 

@@ -1,0 +1,26 @@
+[project]
+name = "inkflow-browser-playwright"
+# 版本号从 inkflow-core 读取，全项目只有一处定义
+dynamic = ["version"]
+description = "InkFlow 浏览器运行时：Playwright 引擎（Legado L3）"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+dependencies = [
+    "inkflow-core",
+]
+
+# playwright 是**可选**依赖：默认分发不带它（ADR-024）。
+# 它自己有 105MB（含 Node 驱动），而浏览器本体还要另下 271MB。
+# 装它：pip install "inkflow-browser-playwright[playwright]"
+[project.optional-dependencies]
+playwright = ["playwright>=1.49"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "../inkflow-core/src/inkflow_core/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/inkflow_browser_playwright"]

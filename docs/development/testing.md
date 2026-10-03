@@ -23,6 +23,13 @@ tests/
 │   ├── test_legado_compat.py     L0 / L1 / 等级边界
 │   └── test_legado_js.py         L2（@js: 规则，跑真实 Node sidecar）
 │
+├── browser/         浏览器运行时
+│   ├── contract.py               可复用的契约检查（给所有引擎）
+│   ├── stub.py                   测试桩（真实 HTTP，不跑页面脚本）
+│   ├── test_contract.py          契约跑在桩上
+│   ├── test_registry.py          引擎注册表
+│   └── test_playwright.py        契约跑在真实 Playwright 上（默认不跑）
+│
 ├── fixtures/mock-site/           静态 HTML 夹具
 ├── mock_server.py                mock 书站
 ├── sources_data.py               测试书源定义（共享）
@@ -36,6 +43,17 @@ uv run pytest -m unit        # 只跑单元测试
 uv run pytest -m integration
 uv run pytest -m source
 ```
+
+`browser` 标记的用例**默认不跑**（`addopts` 里排除了）—— 它们要下约 270MB
+浏览器。装好之后显式跑：
+
+```bash
+uv sync --all-packages --group browser
+python -m playwright install chromium-headless-shell
+uv run pytest -m browser
+```
+
+日常 CI 同样不跑它们，见 [CI / CD](cicd.md) 的 Browser 流水线。
 
 ---
 
