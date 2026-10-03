@@ -213,6 +213,11 @@ Python (Legado 适配器)
 `config.toml` 里的 `[browser]` 段已有 `enabled` / `engine` / `headless` /
 `timeout` / `install_dir`。
 
+**已知隐忧（没复现过，先记着）**：`java.webView` 是在 JS 求值**内部**触发
+浏览器启动的，冷启动要 1~3 秒，而 JS 求值本身有超时（`[js] timeout`，默认 10s）。
+慢机器上有可能把冷启动算进取值预算。真出问题时的方向是「求值前预热浏览器」——
+但**先要有能复现的手段**。
+
 ---
 
 ## M5 高级功能 ⬜
