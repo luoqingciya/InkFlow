@@ -7,10 +7,11 @@
  *
  * 用法（在 desktop/ 下）：
  *
- *     npx esbuild scripts/bridge-smoke.ts --bundle --platform=node --format=cjs \
- *       --external:electron --outfile=scripts/.bridge-smoke.cjs
- *     env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
- *       node_modules/.bin/electron scripts/.bridge-smoke.cjs
+ *     npm run smoke:bridge
+ *
+ * 脚本里带了 `--no-sandbox`：Linux CI 上 Chromium 的 SUID sandbox helper
+ * 权限不对，不加这个开关 Electron 会直接 FATAL 退出
+ * （`setuid_sandbox_host.cc`）。这里渲染的是本机测试页，去掉沙箱可接受。
  *
  * **必须清掉 `ELECTRON_RUN_AS_NODE`** —— 本环境预设了它，Electron 会退化成
  * 纯 Node 跑，`BrowserWindow` 直接不可用。
