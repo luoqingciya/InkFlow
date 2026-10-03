@@ -78,6 +78,42 @@ def print_health(data: dict[str, Any]) -> None:
     )
 
 
+def print_browser_status(data: dict[str, Any]) -> None:
+    """浏览器运行时状态。"""
+    enabled = data.get("enabled")
+    installed = data.get("installed")
+    available = data.get("engine_available")
+
+    if installed:
+        state = "[green]已安装[/]"
+    elif not available:
+        state = "[red]引擎不可用[/]"
+    else:
+        state = "[yellow]未安装[/]"
+
+    lines = [
+        f"启用      {'是' if enabled else '否'}",
+        f"引擎      {data.get('engine')}",
+        f"安装目录  {data.get('install_dir') or '—'}",
+        f"浏览器    {state}",
+    ]
+    if data.get("message"):
+        lines.append(f"\n{data['message']}")
+
+    console.print(Panel("\n".join(lines), title="浏览器运行时", border_style="cyan"))
+
+
+def print_browser_install(data: dict[str, Any]) -> None:
+    """浏览器安装结果。"""
+    console.print(
+        Panel(
+            f"安装目录  {data.get('install_dir')}\n{data.get('message', '')}",
+            title="浏览器已就绪",
+            border_style="green",
+        )
+    )
+
+
 def print_system_info(data: dict[str, Any]) -> None:
     """运行概况。"""
     console.print(

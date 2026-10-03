@@ -13,7 +13,7 @@ from fastapi import FastAPI
 
 from inkflow_api.auth import TokenAuthMiddleware
 from inkflow_api.errors import install_error_handlers
-from inkflow_api.routers import books, search, sources, system, tasks, ws
+from inkflow_api.routers import books, browser, search, sources, system, tasks, ws
 from inkflow_api.routers import settings as settings_router
 from inkflow_api.state import AppState, build_state
 from inkflow_core import __version__
@@ -114,6 +114,7 @@ def create_app(
         return response
 
     app.include_router(system.router)
+    app.include_router(browser.router)
     app.include_router(search.router)
     app.include_router(books.router)
     app.include_router(sources.router)

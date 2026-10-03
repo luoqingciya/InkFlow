@@ -51,6 +51,10 @@ class ErrorCode(StrEnum):
     TASK_CANCELLED = "TASK_CANCELLED"
     TASK_INVALID_STATE = "TASK_INVALID_STATE"
 
+    # 浏览器运行时
+    BROWSER_UNAVAILABLE = "BROWSER_UNAVAILABLE"
+    BROWSER_INSTALL_FAILED = "BROWSER_INSTALL_FAILED"
+
 
 class InkFlowError(Exception):
     """InkFlow 业务异常基类。

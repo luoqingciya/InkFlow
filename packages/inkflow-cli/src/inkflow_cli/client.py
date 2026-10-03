@@ -130,6 +130,20 @@ class InkFlowClient:
         """运行概况。"""
         return await self.request("GET", "/api/v1/system/info")
 
+    # -- 浏览器 ------------------------------------------------------------
+
+    async def browser_status(self) -> dict[str, Any]:
+        """浏览器运行时状态。"""
+        return await self.request("GET", "/api/v1/browser/status")
+
+    async def browser_install(self) -> dict[str, Any]:
+        """下载浏览器。
+
+        要下约 270MB，**服务端会阻塞几分钟** —— 所以这里单独放宽超时，
+        不用客户端默认的那个。
+        """
+        return await self.request("POST", "/api/v1/browser/install", timeout=1800)
+
     # -- 搜索 --------------------------------------------------------------
 
     async def search(

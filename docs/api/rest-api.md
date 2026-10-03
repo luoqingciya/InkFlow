@@ -29,6 +29,8 @@ token 由后端每次启动时生成，通过两种方式获得：
 |---|---|---|
 | GET | `/health` | 健康检查（免鉴权） |
 | GET | `/api/v1/system/info` | 运行概况 |
+| GET | `/api/v1/browser/status` | 浏览器运行时状态 |
+| POST | `/api/v1/browser/install` | 下载浏览器（约 270MB，会阻塞几分钟） |
 | GET | `/api/v1/search` | 聚合搜索 |
 | GET | `/api/v1/books` | 书库列表 |
 | GET | `/api/v1/books/{book_id}` | 书籍详情 |
@@ -95,6 +97,51 @@ token 由后端每次启动时生成，通过两种方式获得：
 `cache` 是 HTTP 响应缓存的概况。缓存关闭时字段形状不变，只是取零值
 （`enabled: false`、`max_size_bytes: null`），客户端不需要分支处理。
 详见 [ADR-017](../architecture/decisions.md)。
+
+---
+
+## 浏览器运行时
+
+浏览器**默认不随分发**（[ADR-024](../architecture/decisions.md)）—— 它占
+约 270MB，而需要它的书源只占 5%。所以首次启用时要由用户决定装不装。
+
+### `GET /api/v1/browser/status`
+
+```json
+{
+  "enabled": false,
+  "engine": "playwright",
+  "install_dir": "C:/Users/x/.inkflow/browsers",
+  "installed": false,
+  "engine_available": true,
+  "message": "浏览器未安装，需要先下载（约 270MB）。"
+}
+```
+
+`engine_available` 为 `false` 表示**这个构建根本没带引擎**
+（单文件可执行程序就是这样），此时 `message` 会说明替代方案。
+
+### `POST /api/v1/browser/install`
+
+下载浏览器到 `install_dir`，返回：
+
+```json
+{
+  "installed": true,
+  "install_dir": "C:/Users/x/.inkflow/browsers",
+  "message": "浏览器已装到 C:/Users/x/.inkflow/browsers"
+}
+```
+
+**这是一个会阻塞几分钟的请求** —— 一次性操作，客户端自己把超时放宽
+（CLI 里是 1800 秒）。下载在线程里跑，不占事件循环。
+
+失败返回 `503` + 稳定的错误码：
+
+| 错误码 | 含义 |
+|---|---|
+| `BROWSER_UNAVAILABLE` | 这个构建没带引擎 |
+| `BROWSER_INSTALL_FAILED` | 下载失败（网络不通、磁盘满等），`message` 里有换源与手动安装的办法 |
 
 ---
 

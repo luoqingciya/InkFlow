@@ -4,6 +4,7 @@
 把它挂到注册表上。
 """
 
+from inkflow_browser_playwright.install import browser_installed, install_browser
 from inkflow_browser_playwright.paths import browsers_dir
 from inkflow_browser_playwright.provider import (
     BROWSER_TARGET,
@@ -15,7 +16,9 @@ from inkflow_browser_playwright.provider import (
 __all__ = [
     "BROWSER_TARGET",
     "PlaywrightBrowserProvider",
+    "browser_installed",
     "browsers_dir",
+    "install_browser",
     "install_hint",
     "register_playwright",
 ]
