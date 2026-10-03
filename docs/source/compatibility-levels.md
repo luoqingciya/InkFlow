@@ -28,11 +28,14 @@ Legado 书源生态里，能力的跨度非常大：从纯 CSS 选择器到依�
 ```text
 L0  ✅ 已实现
 L1  ✅ 已实现
-L2  ⬜ 未实现（Milestone 3）
+L2  ✅ 已实现（Milestone 3，需 Node.js 20+ 且 [js] enabled = true）
 L3  ⬜ 未实现（Milestone 4）
 ```
 
-**当前版本覆盖 L0 + L1。**
+**当前版本覆盖 L0 + L1 + L2（部分）。**
+
+L2 的 `@js:` 前缀已支持；`<js>` 标签、DOM 操作、cookie 管理尚未覆盖，
+详见 [roadmap](../development/roadmap.md#m3-js-runtime-l2)。
 
 ---
 

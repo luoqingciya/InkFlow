@@ -12,6 +12,7 @@ members = [
     "inkflow-cli",
     "inkflow-core",
     "inkflow-export",
+    "inkflow-js-runtime",
     "inkflow-legado",
     "inkflow-source",
     "inkflow-workspace",
@@ -336,10 +337,21 @@ dependencies = [
 requires-dist = [{ name = "inkflow-core", editable = "packages/inkflow-core" }]
 
 [[package]]
+name = "inkflow-js-runtime"
+source = { editable = "packages/inkflow-js-runtime" }
+dependencies = [
+    { name = "inkflow-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "inkflow-core", editable = "packages/inkflow-core" }]
+
+[[package]]
 name = "inkflow-legado"
 source = { editable = "packages/inkflow-legado" }
 dependencies = [
     { name = "inkflow-core" },
+    { name = "inkflow-js-runtime" },
     { name = "inkflow-source" },
     { name = "pydantic" },
 ]
@@ -347,6 +359,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "inkflow-core", editable = "packages/inkflow-core" },
+    { name = "inkflow-js-runtime", editable = "packages/inkflow-js-runtime" },
     { name = "inkflow-source", editable = "packages/inkflow-source" },
     { name = "pydantic", specifier = ">=2.9" },
 ]

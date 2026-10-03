@@ -36,6 +36,7 @@ inkflow-legado = { workspace = true }
 inkflow-api = { workspace = true }
 inkflow-cli = { workspace = true }
 inkflow-export = { workspace = true }
+inkflow-js-runtime = { workspace = true }
 
 [dependency-groups]
 dev = [

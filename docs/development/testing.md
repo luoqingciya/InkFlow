@@ -20,7 +20,8 @@ tests/
 │   └── test_websocket.py         进度推送（含真实 uvicorn 流式验证）
 │
 ├── source/          书源兼容性
-│   └── test_legado_compat.py     L0 / L1 / 等级边界
+│   ├── test_legado_compat.py     L0 / L1 / 等级边界
+│   └── test_legado_js.py         L2（@js: 规则，跑真实 Node sidecar）
 │
 ├── fixtures/mock-site/           静态 HTML 夹具
 ├── mock_server.py                mock 书站
@@ -286,31 +287,33 @@ API 测试与兼容性测试共用同一份 —— 否则两处会各自漂移�
 
 ```bash
 uv run pytest -q
-# 218 passed
+# 254 passed
 ```
 
 | 层 | 数量 | 覆盖内容 |
 |---|---|---|
 | unit | 83 | 模型与状态机、归一化、正文清洗、规则编译（含各类语法分支）、三种导出器、EPUB 结构合法性、**日志落盘与轮转** |
-| integration | 122 | 全部路由、鉴权、错误结构、书源导入幂等、SSRF 拦截、原生书源完整流程、**下载任务全链路**、**HTTP 缓存**、**封面与插图下载**、**WebSocket 进度推送** |
-| source | 13 | Legado L0/L1、等级判定、JS 规则报错、规则失效报错、AST 调试接口 |
+| integration | 149 | 全部路由、鉴权、错误结构、书源导入幂等、SSRF 拦截、原生书源完整流程、**下载任务全链路**、**HTTP 缓存**、**封面与插图下载**、**JS 运行时**、**WebSocket 进度推送** |
+| source | 22 | Legado L0/L1/L2、等级判定、JS 规则报错、规则失效报错、AST 调试接口 |
 
 按文件看：
 
 | 文件 | 数量 |
 |---|---|
-| `unit/test_legado_compiler.py` | 22 |
-| `unit/test_log.py` | 19 |
-| `unit/test_export.py` | 17 |
-| `unit/test_models.py` | 15 |
-| `unit/test_normalizer.py` | 10 |
 | `integration/test_download.py` | 33 |
 | `integration/test_cache.py` | 32 |
+| `integration/test_js_runtime.py` | 27 |
+| `unit/test_legado_compiler.py` | 22 |
+| `unit/test_log.py` | 19 |
 | `integration/test_api.py` | 19 |
+| `unit/test_export.py` | 17 |
 | `integration/test_websocket.py` | 16 |
+| `unit/test_models.py` | 15 |
 | `source/test_legado_compat.py` | 13 |
 | `integration/test_native_source.py` | 12 |
 | `integration/test_assets.py` | 10 |
+| `unit/test_normalizer.py` | 10 |
+| `source/test_legado_js.py` | 9 |
 
 ---
 

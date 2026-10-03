@@ -4,9 +4,9 @@
 
 ```text
 M0 架构验证        ✅ 已完成
-M1 MVP             🟡 进行中（核心链路已通，外围待补）
+M1 MVP             ✅ 已完成（核心链路 + 外围补齐）
 M2 Legado 兼容      ✅ 已覆盖 L0 + L1
-M3 JS Runtime      ⬜ 未开始
+M3 JS Runtime      ✅ 已覆盖 L2（独立 sidecar）
 M4 Browser Runtime ⬜ 未开始
 M5 高级功能        ⬜ 未开始
 ```
@@ -112,28 +112,47 @@ WebDAV、MCP、插件市场
 
 ---
 
-## M3 JS Runtime ⬜
+## M3 JS Runtime ✅（L2）
 
-**目标**：支持 `@js:` 规则与 `<js>` 标签，让需要签名 / 加密的书源可用。
-
-设计约束（现在就守住）：
+支持 `@js:` 规则，让需要签名 / 加密的书源可用。
 
 ```text
-Python Core
-      │  JSON-RPC
+Python (Legado 适配器)
+      │  JSON-RPC over stdio
       ▼
-┌─────────────────────┐
-│ inkflow-js-runtime   │
-│ Node.js sidecar      │
-└─────────────────────┘
+┌──────────────────────────┐
+│ inkflow-js-runtime        │
+│ Node.js sidecar（零依赖） │
+└──────────────────────────┘
 ```
 
-- **JS 不得运行在 Python 主进程里**，走独立 sidecar
-- 限制：超时 10~30s、内存上限、请求数上限、响应体积上限、最大重定向
-- 禁止：文件系统、`child_process`、shell、native module
-- 提供 Legado 兼容的宿主 API（`java.*` 映射、`fetch`、`cookie`、DOM 操作）
+已实现：
 
-`config.toml` 里的 `[js]` 段已预留配置项。
+- 独立 Node sidecar（`packages/inkflow-js-runtime/src/.../sidecar/`），
+  **零 npm 依赖** —— 只用 Node 内置模块，不需要 `npm install`
+- 同步 stdio 协议：`java.ajax` 是同步语义（书源不会写 `await`），
+  sidecar 用 `fs.readSync` 阻塞等响应
+- **网络请求回调 Python**：`java.ajax` 走反向 RPC 回 `HttpClient`，
+  SSRF 防护 / 限速 / 缓存全部照旧生效
+- 宿主 API：`ajax` / `get` / `post`、`base64Encode/Decode`、`md5Encode` /
+  `md5Encode16`、`hexEncode/Decode`、`digestHex`、`timeFormat`、`log`
+- 三层限制：进程内存（`--max-old-space-size`）、沙箱超时、
+  Python 兜底超时（超时即丢弃进程）
+- 未启用时**明确报错并把解法写进 message**，不静默返回空
+- 一个 sidecar 服务所有书源（每书源一个进程太浪费）
+
+**安全边界（重要）**：`node:vm` **不是**权限沙箱，它只隔离全局变量与
+超时。真正的边界是「独立进程 + 进程里没有敏感数据」。
+详见 [ADR-020](../architecture/decisions.md)。
+
+`config.toml` 的 `[js]` 段已生效（默认 `enabled = false`）。
+
+### 尚未覆盖的 L2 细节
+
+- `<js>` 标签写法（当前只支持 `@js:` 前缀）
+- DOM 操作（Legado 的 `org.jsoup` 映射）
+- cookie 管理（`java.getCookie` / `setCookie`）
+- `java.getWebViewUA` 等与浏览器环境相关的 API
 
 ---
 
@@ -442,6 +461,38 @@ $ uv run python scripts/check_version.py → 版本号一致（0.1.0.dev2）
 
 新增 `tests/integration/test_assets.py`（10 项），mock 站点补了图片端点。
 取舍见 [ADR-019](../architecture/decisions.md)。
+
+### 2026-10-03 · M3 JS Runtime
+
+```text
+$ uv run pytest -q
+254 passed          （218 → 254）
+
+$ uv run ruff check .          → All checks passed!
+$ uv run mypy .                → Success: no issues found in 96 source files
+```
+
+新增 `packages/inkflow-js-runtime`（Python 客户端 + Node sidecar）。
+
+**三个技术难点与解法**：
+
+1. **`java.ajax` 是同步语义。** 书源是给 Rhino 写的，不会写 `await`。
+   解法：sidecar 内部用 `fs.readSync` 阻塞等响应 —— 单线程、无 worker。
+   因为 Python 是独立进程，阻塞期间它能正常处理请求，不会死锁。
+2. **网络不能由 sidecar 发。** 否则 SSRF 防护、限速、缓存全部绕过了。
+   解法：`java.ajax` 走反向 JSON-RPC 回到 Python 的 `HttpClient`。
+3. **编译器没保存剥离前缀后的 JS 代码。** `Rule.raw` 带着 `@js:` 前缀，
+   直接喂给 JS 引擎会语法错误。解法：`Rule` 加 `code` 字段存剥离后的代码。
+
+**顺带修掉一个静默失败**：原先 `RuleMode.JS` 规则在 `_field` 里直接
+返回 `None` —— 字段解析出来是空的，用户以为「这个网站没这个字段」。
+现在明确报错，并把「怎么启用」写进 message。
+
+**安全边界**：`node:vm` 不是权限沙箱（见 [ADR-020](../architecture/decisions.md)），
+真正的边界是「独立进程 + 进程里没有敏感数据」。
+
+新增测试：`tests/integration/test_js_runtime.py`（27 项，含沙箱隔离与超时）、
+`tests/source/test_legado_js.py`（9 项，含 `@js:` 书源端到端）。
 
 ### 尚未验证
 
