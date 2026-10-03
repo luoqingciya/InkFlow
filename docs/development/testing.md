@@ -243,6 +243,33 @@ assert "落盘测试" in (tmp_path / LOG_FILENAME).read_text(encoding="utf-8")
 - **中文往返要单独测**：Windows 默认 cp1252，没显式指定编码时
   中文会乱码甚至抛 `UnicodeEncodeError`。
 
+### 用真实书源校准兼容层
+
+**自己写的 mock 书源只能证明「实现符合我的理解」，证明不了「符合真实书源」。**
+
+2026-10-03 拿一份 1363 条的真实 Legado 书源集合做体检，结果很难看：
+
+```text
+结构解析    1363 / 1363   100%     ← 没问题
+规则编译    0 失败                  ← 没问题
+选择器求值  8689 / 23481  37.0%    ← 37% 的规则根本跑不起来
+```
+
+**注意「编译 0 失败」和「求值 37% 失败」的反差。** 选择器语法是求值时才
+解析的，所以编译通过不代表规则能用 —— 这是「编译绿灯」给的虚假安全感。
+
+修复后降到 5.50%（见 [ADR-021](../architecture/decisions.md)）。
+
+**做这类体检时的两个坑（都是脚本自身的问题）**：
+
+1. **直接调 `html_parser.select(selector)`** —— 绕过了下标解析，
+   把合法的 `!0` 规则误判成语法错误。
+2. **只调 `compile()`** —— 漏掉了选择器语法，报了 0 失败，
+   而实际有 37% 跑不起来。
+
+**教训：体检工具必须走和线上完全一样的路径**（`rule.select_nodes()`），
+否则测出来的是「工具的行为」，不是「被测代码的行为」。
+
 ### 书源定义共享
 
 测试书源定义放在 [`tests/sources_data.py`](../../tests/sources_data.py)，
@@ -287,12 +314,12 @@ API 测试与兼容性测试共用同一份 —— 否则两处会各自漂移�
 
 ```bash
 uv run pytest -q
-# 254 passed
+# 268 passed
 ```
 
 | 层 | 数量 | 覆盖内容 |
 |---|---|---|
-| unit | 83 | 模型与状态机、归一化、正文清洗、规则编译（含各类语法分支）、三种导出器、EPUB 结构合法性、**日志落盘与轮转** |
+| unit | 97 | 模型与状态机、归一化、正文清洗、规则编译（含**真实书源语法**：隐式 JSONPath / 下标 / 模板）、三种导出器、EPUB 结构合法性、**日志落盘与轮转** |
 | integration | 149 | 全部路由、鉴权、错误结构、书源导入幂等、SSRF 拦截、原生书源完整流程、**下载任务全链路**、**HTTP 缓存**、**封面与插图下载**、**JS 运行时**、**WebSocket 进度推送** |
 | source | 22 | Legado L0/L1/L2、等级判定、JS 规则报错、规则失效报错、AST 调试接口 |
 
@@ -303,7 +330,7 @@ uv run pytest -q
 | `integration/test_download.py` | 33 |
 | `integration/test_cache.py` | 32 |
 | `integration/test_js_runtime.py` | 27 |
-| `unit/test_legado_compiler.py` | 22 |
+| `unit/test_legado_compiler.py` | 36 |
 | `unit/test_log.py` | 19 |
 | `integration/test_api.py` | 19 |
 | `unit/test_export.py` | 17 |

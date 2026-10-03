@@ -19,6 +19,7 @@ from lxml.html import HtmlElement
 
 from inkflow_source.parsers import html as html_parser
 from inkflow_source.parsers import json as json_parser
+from inkflow_source.parsers import text as text_parser
 
 __all__ = ["Replacement", "Rule", "RuleContext", "RuleMode"]
 
@@ -58,24 +59,96 @@ class RuleContext:
     doc: HtmlElement | None = None
     data: Any = None
     base_url: str = ""
+    #: 模板规则（``{{...}}``）用的变量表。普通选择器规则用不到。
+    variables: dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_json(self) -> bool:
         return self.data is not None and self.doc is None
 
 
+#: 模板里的 ``{{...}}`` 占位符
+_TEMPLATE_KEY_RE = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
+
+#: Legado 的下标后缀，真实书源里见过三种写法：
+#:   ``!0`` / ``!0:2`` —— 感叹号形式
+#:   ``.0``            —— 点号形式（CSS 类名不可能是纯数字，所以没有歧义）
+#:   ``.-1``           —— 负数表示倒数（``-1`` 是最后一个）
+_BANG_INDEX_RE = re.compile(r"^(?P<base>.*?)!(?P<start>-?\d+)(?::(?P<stop>-?\d+))?$")
+_DOT_INDEX_RE = re.compile(r"^(?P<base>.+)\.(?P<start>-?\d+)$")
+
+#: 属性选择器的值没加引号：``[property=og:novel:author]``。
+#: 书源里这么写很常见，Legado（Jsoup）容忍，但 cssselect 会把 ``:`` 当伪类、
+#: 把 ``|`` 当命名空间分隔符而报错。补上引号即可。
+_UNQUOTED_ATTR_RE = re.compile(r"""\[(?P<name>[\w-]+)(?P<op>[~^$*|]?=)(?P<value>[^"'\]\s]+)\]""")
+
+
+def _quote_attr_values(selector: str) -> str:
+    """给属性选择器的裸值补引号。
+
+    ``meta[property=og:novel:author]`` → ``meta[property="og:novel:author"]``
+
+    只处理「值里含 ``:`` 或 ``|``」的情况 —— 普通的 ``[href=/x]`` 不动，
+    避免给本来就正常的规则引入变化。
+    """
+    if "[" not in selector:
+        return selector
+
+    def _sub(match: re.Match[str]) -> str:
+        value = match.group("value")
+        if ":" not in value and "|" not in value:
+            return match.group(0)
+        return f'[{match.group("name")}{match.group("op")}"{value}"]'
+
+    return _UNQUOTED_ATTR_RE.sub(_sub, selector)
+
+
+def _split_index_suffix(selector: str) -> tuple[str, tuple[int, int | None] | None]:
+    """把 ``tag.tr!0`` / ``.book-metas.0`` 拆成 ``(选择器, (起点, 终点))``。
+
+    下标只认**末尾**的标记 —— 选择器本身不会以 ``!`` 或 ``.数字`` 结尾。
+    """
+    match = _BANG_INDEX_RE.match(selector)
+    if match is not None:
+        start = int(match.group("start"))
+        stop_text = match.group("stop")
+        return match.group("base"), (start, int(stop_text) if stop_text else None)
+
+    match = _DOT_INDEX_RE.match(selector)
+    if match is not None:
+        return match.group("base"), (int(match.group("start")), None)
+
+    return selector, None
+
+
+def _apply_index(nodes: list[HtmlElement], index: tuple[int, int | None]) -> list[HtmlElement]:
+    """按下标取元素。
+
+    - 非负：``!0`` 取第 0 个
+    - 负数：``.-1`` 取倒数第一个
+    - 越界：返回空列表（不是异常）
+
+    单点取值用切片而不是 ``nodes[i]``，这样越界自然是空列表，
+    不必额外判长度。
+    """
+    start, stop = index
+    if stop is None:
+        if start < 0:
+            return nodes[start:] if -start <= len(nodes) else []
+        return nodes[start : start + 1]
+    return nodes[start:stop]
+
+
 @dataclass(slots=True)
 class Rule:
-    """一条已编译的规则。
-
-    Attributes:
-        raw: 原始规则字符串，保留用于调试器展示。
-        mode: 取值方式。
-        selectors: 选择器链，逐级下钻（``.a@b`` 表示先取 ``.a`` 再在其内取 ``b``）。
-        json_path: JSON 模式下的 JSONPath 表达式。
-        extract: 取值动作：``text`` / ``html`` / ``href`` / 任意属性名。
-        replacements: 取值后依次执行的正则替换。
-        fallbacks: ``||`` 的备选规则，前一条无结果时依次尝试。
+    """一条已编译的规则。    Attributes:
+    raw: 原始规则字符串，保留用于调试器展示。
+    mode: 取值方式。
+    selectors: 选择器链，逐级下钻（``.a@b`` 表示先取 ``.a`` 再在其内取 ``b``）。
+    json_path: JSON 模式下的 JSONPath 表达式。
+    extract: 取值动作：``text`` / ``html`` / ``href`` / 任意属性名。
+    replacements: 取值后依次执行的正则替换。
+    fallbacks: ``||`` 的备选规则，前一条无结果时依次尝试。
     """
 
     raw: str
@@ -112,14 +185,26 @@ class Rule:
         """按选择器链取出元素列表（不做取值）。
 
         用于 ``bookList`` / ``chapterList`` 这类需要元素集合的规则。
+
+        支持 Legado 的 ``!N`` 下标后缀（可出现在链的任意一级）：
+        ``class.grid@tag.tr!0`` 表示「取 ``tag.tr`` 的第 0 个」。
+        真实书源里这个写法有 400 多条，不认就会报选择器语法错误。
         """
         if not self.selectors:
             return [doc]
+        # TEXT 模式的「选择器」其实是模板字符串，不是 CSS ——
+        # 拿去解析必然语法错误。JSON 模式同理（走的是 json_path）。
+        if self.mode in (RuleMode.TEXT, RuleMode.JSON):
+            return [doc]
         nodes: list[HtmlElement] = [doc]
         for selector in self.selectors:
+            base, index = _split_index_suffix(selector)
             next_nodes: list[HtmlElement] = []
             for node in nodes:
-                next_nodes.extend(html_parser.select(node, selector))
+                found = html_parser.select(node, _quote_attr_values(base)) if base else [node]
+                if index is not None:
+                    found = _apply_index(found, index)
+                next_nodes.extend(found)
             nodes = next_nodes
             if not nodes:
                 return []
@@ -145,9 +230,45 @@ class Rule:
         """不含备选链的求值。"""
         if self.mode is RuleMode.JSON:
             return self._evaluate_json(context)
+        if self.mode is RuleMode.TEXT:
+            return self._evaluate_text(context)
         if context.doc is None:
             return []
         return self._evaluate_html(context)
+
+    def _evaluate_text(self, context: RuleContext) -> list[str]:
+        """TEXT 模式：渲染 ``{{...}}`` 模板，不走 DOM。
+
+        模板里的表达式按 Legado 语义在当前上下文求值：
+        ``{{$.xxx}}`` 从当前 JSON 数据取 JSONPath，其余按变量名查表。
+        """
+        if not self.selectors:
+            return []
+        template = self.selectors[0]
+
+        variables = dict(context.variables)
+        if context.data is not None:
+            for key in _TEMPLATE_KEY_RE.findall(template):
+                if not key.startswith("$"):
+                    continue
+                try:
+                    values = json_parser.query(context.data, key)
+                except ValueError:
+                    values = []
+                if values:
+                    variables[key] = json_parser.as_text(values[0])
+
+        # 先做**精确**替换：`{{$.bookId}}` 里的 `$.bookId` 是一个整体键，
+        # 交给 render_template 会被按 `.` 拆成嵌套路径而找不到。
+        # 剩下的（如 `{{page}}`）再走通用渲染。
+        rendered = _TEMPLATE_KEY_RE.sub(
+            lambda m: str(variables[m.group(1)]) if m.group(1) in variables else m.group(0),
+            template,
+        )
+        if "{{" in rendered:
+            rendered = text_parser.render_template(rendered, variables)
+
+        return [self._apply_replacements(rendered)] if rendered else []
 
     def _evaluate_html(self, context: RuleContext) -> list[str]:
         doc = context.doc
