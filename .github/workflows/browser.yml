@@ -22,8 +22,6 @@ jobs:
     env:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: utf-8
-      # 装在 runner 临时目录，不污染工作区；同时让缓存路径可预期。
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/pw-browsers
     steps:
       - uses: actions/checkout@v4
 
@@ -32,6 +30,12 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
+
+      - name: 设定浏览器目录
+        # runner 上下文在 job 级 env 里不可用，只能在这一步写进 GITHUB_ENV。
+        # 放 runner 临时目录：不污染工作区，路径也可预期（好做缓存）。
+        shell: bash
+        run: echo "PLAYWRIGHT_BROWSERS_PATH=${{ runner.temp }}/pw-browsers" >> "$GITHUB_ENV"
 
       - name: 缓存浏览器
         # 浏览器版本与 playwright 版本严格绑定，所以键里带上 uv.lock。
