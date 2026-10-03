@@ -110,7 +110,9 @@ show_error_codes = true
 exclude = ["desktop/", "\\.venv/"]
 
 [[tool.mypy.overrides]]
-module = ["lxml.*", "jsonpath_ng.*"]
+# playwright 是**可选**依赖（ADR-024）：日常 CI 不装它，得允许导入缺失。
+# 装了就照常检查，不是无条件跳过。
+module = ["lxml.*", "jsonpath_ng.*", "playwright.*"]
 ignore_missing_imports = true
 
 # 测试代码放宽：pytest 的 fixture 参数靠注入，逐个标注类型只会增加噪音，
